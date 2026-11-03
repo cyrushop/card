@@ -8,7 +8,8 @@
 
 * Serves the app (app/) and the bot output (data/).
 * Saves the collection to data/collection.json (with a dated backup per day).
-* Lets the app's Settings page run the bots.
+* Lets the app's Settings page run the bots, and (computer version) runs the
+  automatic updates chosen in Settings every 30 minutes while it is open.
 
 Settings from the environment (used by --cloud):
     OPCG_DATA        folder for data (default: ./data). On Cloud Run: a mounted
@@ -43,7 +44,10 @@ BOTS = {
     "update": [os.path.join(ROOT, "bot", "scrape_cards.py"), "--images"],  # new series, new cards, new/changed images
     "decks": [os.path.join(ROOT, "bot", "scrape_decks.py")],
     "prices": [os.path.join(ROOT, "bot", "scrape_prices.py")],
+    "auto": [os.path.join(ROOT, "bot", "auto_update.py"), "--force"],     # 「立即執行一次」
+    "auto-check": [os.path.join(ROOT, "bot", "auto_update.py")],          # scheduled check: runs only what is due
 }
+AUTO_CHECK_EVERY = 30 * 60  # seconds, computer version only (online: Cloud Scheduler)
 # Files under data/ the browser may load. Everything else there (collection.json,
 # backups, raw pages, the PIN) is only reachable through the API.
 PUBLIC_DATA = {"cards.js", "cards.json", "decks.js", "decks.json", "prices.js", "prices.json"}
@@ -51,6 +55,7 @@ IAP_EMAIL_HEADER = "X-Goog-Authenticated-User-Email"
 
 PIN = None             # set by --pin / OPCG_PIN
 ALLOWED_EMAILS = set()  # set from ALLOWED_EMAILS
+CLOUD = False          # set by --cloud
 
 LOGIN = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OPCG 卡庫</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:90vh;margin:0">
@@ -82,6 +87,17 @@ def run_bot(name):
 
     threading.Thread(target=work, daemon=True).start()
     return True
+
+
+def auto_check_loop():
+    """Computer version: while the app is open, run the updates that are due."""
+    time.sleep(120)
+    while True:
+        with lock:
+            busy = any(j.get("running") for j in jobs.values())
+        if not busy:
+            run_bot("auto-check")
+        time.sleep(AUTO_CHECK_EVERY)
 
 
 def iap_email(header_value):
@@ -197,6 +213,13 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path == "/api/bot":
             with lock:
                 return self._json({"ok": True, "jobs": jobs})
+        if self.path == "/api/auto":
+            try:
+                with open(os.path.join(DATA, "auto-update.json"), encoding="utf-8") as f:
+                    status = json.load(f)
+            except (OSError, ValueError):
+                status = {}
+            return self._json({"ok": True, "cloud": CLOUD, "status": status})
         if self._route()[0] is None:
             return self.send_error(404)
         return super().do_GET()
@@ -285,6 +308,7 @@ def configure(pin=None, emails=None):
 
 
 def main(argv=None):
+    global CLOUD
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, help="port (default 8765, or $PORT with --cloud)")
     ap.add_argument("--lan", action="store_true", help="also listen on your home network (for your phone)")
@@ -297,6 +321,7 @@ def main(argv=None):
         print("Refusing to start: --cloud needs ALLOWED_EMAILS (with IAP) or OPCG_PIN, "
               "otherwise anyone with the address could open your collection.", file=sys.stderr)
         return 2
+    CLOUD = bool(args.cloud)
     port = args.port or (int(os.environ.get("PORT", "8080")) if args.cloud else 8765)
     host = "0.0.0.0" if (args.lan or args.cloud) else "127.0.0.1"
     os.makedirs(DATA, exist_ok=True)
@@ -304,6 +329,8 @@ def main(argv=None):
     print(f"OPCG app: http://localhost:{port}   data: {DATA}   (Ctrl+C to stop)")
     if ALLOWED_EMAILS:
         print("  allowed Google accounts: " + ", ".join(sorted(ALLOWED_EMAILS)))
+    if not CLOUD:
+        threading.Thread(target=auto_check_loop, daemon=True).start()
     if args.lan:
         for ip in lan_ips():
             print(f"  phone (same Wi-Fi): http://{ip}:{port}")

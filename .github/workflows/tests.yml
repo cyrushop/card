@@ -27,6 +27,9 @@ jobs:
       - name: Server tests
         run: python -I tests/test_serve.py
 
+      - name: Automatic update tests
+        run: python -I tests/test_auto_update.py
+
       - name: Python files compile
         run: python -m py_compile serve.py bot/*.py tools/*.py tests/*.py
 
