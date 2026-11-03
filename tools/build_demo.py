@@ -73,7 +73,8 @@ def build_data():
     for idx, cid in enumerate(all_ids):
         code, num = cid.split("-")
         num = int(num)
-        lead = num <= 3 or cid in ("OP13-001",)
+        # Cards from the real RG Luffy list keep their real role: only OP13-001 is a leader there.
+        lead = cid == "OP13-001" or (num <= 3 and cid not in want)
         rarity = "L" if lead else ("SEC" if num in (118, 119, 60) else rar_cycle[num % 10])
         dual = lead and num % 2 == 1
         c1 = COLS[(num // 9 + len(code)) % 6]
@@ -168,6 +169,13 @@ def main():
                      "placement": ["1st", "Top 4", "3rd", "Top 8"][k], "event": "Sample Cup", "country": "JP", "url": "https://onepiecetopdecks.com/deck-list/", "entries": ents})
     read = lambda n: open(os.path.join(APP, n), encoding="utf-8").read()
     html = read("index.html")
+    # Keep index.html's <head> (doctype, charset, viewport) so the file works when opened on its own,
+    # with the stylesheet link swapped for the inlined CSS.
+    head = html.split("<body>", 1)[0]
+    link = '<link rel="stylesheet" href="style.css">'
+    if link not in head:
+        sys.exit("build_demo: could not find the style.css <link> in index.html")
+    head = head.replace(link, f"<style>\n{read('style.css')}\n</style>")
     body = html.split("<body>", 1)[1].split("</body>", 1)[0]
     body = re.sub(r"<!--.*?-->\s*", "", body, flags=re.S)
     body = re.sub(r'<script src="[^"]+"></script>\s*', "", body)
@@ -182,9 +190,9 @@ def main():
     }
     js_data = "\n".join(f"window.{k} = {json.dumps(v, ensure_ascii=False)};" for k, v in data.items())
     page = (
-        '<title>OPCG 卡庫</title>\n<meta name="theme-color" content="#c8102e">\n'
-        f"<style>\n{read('style.css')}\n</style>\n{body}\n"
+        f"{head}<body>\n{body}\n"
         f"<script>\n{js_data}\n</script>\n<script>\n{read('engine.js')}\n</script>\n<script>\n{read('app.js')}\n</script>\n"
+        "</body>\n</html>\n"
     )
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:

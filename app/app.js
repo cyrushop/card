@@ -38,8 +38,9 @@
   const RARITIES = Array.from(new Set(CARDS.map(c => c.rarity).filter(Boolean)));
 
   // ----------------------------------------------------------- state
-  const LS_KEY = 'opcg-state-v1';
   const DEMO = !!window.OPCG_DEMO;
+  // The demo keeps its own copy so it never reads or overwrites the real app's browser data on the same site.
+  const LS_KEY = DEMO ? 'opcg-demo-state-v1' : 'opcg-state-v1';
   const serverMode = location.protocol.startsWith('http') && !DEMO;
   let state = blankState();
   let saveTimer = null;
@@ -148,11 +149,19 @@
     $('#ask-ok').textContent = opts.ok || '確定';
     $('#ask-ok').classList.toggle('danger', !!opts.danger);
     return new Promise(resolve => {
-      const done = v => { dlg.close(); resolve(v); };
+      let finished = false;
+      // Resolve on a later task, so a follow-up ask() opens only after this key press / click is fully handled.
+      // Otherwise the rest of the Enter key press lands on the next dialog's focused button and answers it.
+      const done = v => {
+        if (finished) return;
+        finished = true;
+        dlg.close();
+        setTimeout(() => resolve(v), 0);
+      };
       $('#ask-ok').onclick = () => done(opts.input ? input.value : true);
       $('#ask-cancel').onclick = () => done(opts.input ? null : false);
       dlg.oncancel = e => { e.preventDefault(); done(opts.input ? null : false); };
-      input.onkeydown = e => { if (e.key === 'Enter') done(input.value); };
+      input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); done(input.value); } };
       dlg.showModal();
       setTimeout(() => (opts.input ? input : $('#ask-ok')).focus(), 0);
     });

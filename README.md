@@ -160,4 +160,8 @@ node tests/engine.test.js
 python3 -I tests/test_bots.py
 ```
 
+```bash
+python3 -I tests/test_demo.py
+```
+
 測試只使用自製的 HTML 及數據。
