@@ -32,7 +32,7 @@ import net  # noqa: E402
 START = "https://onepiecetopdecks.com/deck-list/"
 HOST = "onepiecetopdecks.com"
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.normpath(os.path.join(HERE, "..", "data"))
+DATA = os.path.abspath(os.environ.get("OPCG_DATA") or os.path.join(HERE, "..", "data"))
 
 CARD = r"(?:(?:OP|ST|EB|PRB)\d{2}|P)-\d{3}"
 DG_RE = re.compile(r"(\d+)n(" + CARD + r")", re.I)

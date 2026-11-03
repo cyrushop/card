@@ -23,7 +23,7 @@ import net  # noqa: E402
 
 BASE = "https://asia-tc.onepiece-cardgame.com/cardlist/"
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.normpath(os.path.join(HERE, "..", "data"))
+DATA = os.path.abspath(os.environ.get("OPCG_DATA") or os.path.join(HERE, "..", "data"))
 
 SET_RE = re.compile(r"\b(OP|ST|EB|PRB)\s*-?\s*(\d{2})\b", re.I)
 ID_RE = re.compile(r"^((?:OP|ST|EB|PRB)\d{2}|P)-\d{3}", re.I)

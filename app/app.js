@@ -47,7 +47,8 @@
 
   function blankState() {
     return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [],
-      settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50 } };
+      settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50,
+        autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true } } };
   }
   function normalise(s) {
     const b = blankState();
@@ -327,7 +328,58 @@
       mine: renderMine, value: renderValue, settings: renderSettings })[current]();
   }
 
-  const SEARCH_HINT = '搜尋語法：<code>OP08</code> 系列 · <code>c5</code> 費用 (<code>c3-5</code>) · <code>p6000</code> 力量 · <code>k1000</code> 反擊 · <code>SR</code> 稀有度 · <code>紅</code> 顏色 · <code>領航</code>/<code>事件</code> · <code>有</code>/<code>未有</code> · <code>平行</code> · <code>新</code> 最近更新的新卡 · 其他字詞 = 名稱 / 特徵 / 效果';
+  const SEARCH_HELP = `<b>搜尋語法</b>（以空格或逗號分隔，可混合使用）
+    <table class="help-table">
+      <tr><td><code>OP08</code> <code>EB02</code></td><td>系列</td></tr>
+      <tr><td><code>c5</code> <code>c3-5</code></td><td>費用（領航卡為生命值）</td></tr>
+      <tr><td><code>p6000</code></td><td>力量值</td></tr>
+      <tr><td><code>k1000</code></td><td>反擊值</td></tr>
+      <tr><td><code>SR</code> <code>SEC</code> <code>L</code></td><td>稀有度</td></tr>
+      <tr><td><code>紅</code> <code>red</code></td><td>顏色</td></tr>
+      <tr><td><code>領航</code> <code>事件</code></td><td>類別</td></tr>
+      <tr><td><code>有</code> <code>未有</code></td><td>已擁有／未擁有</td></tr>
+      <tr><td><code>平行</code></td><td>只顯示平行版</td></tr>
+      <tr><td><code>新</code></td><td>最近更新的新卡</td></tr>
+      <tr><td>其他字詞</td><td>名稱、卡號、特徵、效果</td></tr>
+    </table>例如：<code>路飛 OP08 c5 p6000</code>`;
+  /** A small "?" button that shows its explanation only when tapped. */
+  let helpSeq = 0;
+  function help(html, label) {
+    const id = 'help-' + (++helpSeq);
+    const name = esc(label || '說明');
+    return `<span class="help-wrap"><button type="button" class="help-btn" aria-expanded="false" aria-controls="${id}" aria-label="${name}" title="${name}">?</button><span class="help-pop" id="${id}" role="note" hidden>${html}</span></span>`;
+  }
+  function closeHelps(except) {
+    $$('.help-btn[aria-expanded="true"]').forEach(b => {
+      if (b === except) return;
+      b.setAttribute('aria-expanded', 'false');
+      const pop = document.getElementById(b.getAttribute('aria-controls'));
+      if (pop) pop.hidden = true;
+    });
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.help-btn');
+    if (!b) {
+      const pop = e.target.closest('.help-pop');
+      if (pop && e.target.closest('summary')) e.preventDefault(); // reading the help must not fold the panel
+      if (!pop || !e.target.closest('a')) closeHelps(); // tapping the box (or anywhere else) closes it
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const pop = document.getElementById(b.getAttribute('aria-controls'));
+    const open = b.getAttribute('aria-expanded') !== 'true';
+    closeHelps(b);
+    b.setAttribute('aria-expanded', String(open));
+    pop.hidden = !open;
+    if (open) { // keep the box on screen
+      pop.style.transform = '';
+      const r = pop.getBoundingClientRect(), pad = 12;
+      const shift = r.right > innerWidth - pad ? innerWidth - pad - r.right : r.left < pad ? pad - r.left : 0;
+      if (shift) pop.style.transform = `translateX(${shift}px)`;
+    }
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelps(); });
   function openCollection(q) {
     cf.q = q || ''; cf.set = ''; cf.color = ''; cf.cat = ''; cf.rarity = ''; cf.owned = ''; cf.limit = 120;
     const el = $('#tab-collection');
@@ -368,7 +420,7 @@
       el.innerHTML = `
         ${CARDS.length ? '' : noDataNotice('卡表')}
         <div class="toolbar">
-          <input type="search" id="cf-q" placeholder="例如：路飛 OP08 c5 p6000 紅 SR 有">
+          <input type="search" id="cf-q" placeholder="例如：路飛 OP08 c5 p6000 紅 SR 有">${help(SEARCH_HELP, '搜尋語法')}
           <button class="filter-toggle" id="cf-ft">篩選</button>
           <div class="filters">
           <select id="cf-set"><option value="">全部系列</option>${SETS.map(s => opt(s, s)).join('')}</select>
@@ -379,7 +431,6 @@
           <select id="cf-sort"><option value="id">按編號</option><option value="owned">按數量</option><option value="cost">按費用</option><option value="price">按價格</option></select>
           </div>
         </div>
-        <div class="muted hint">${SEARCH_HINT}</div>
         <div class="stats" id="cf-stats"></div>
         <div class="grid" id="cf-grid"></div>
         <button class="more" id="cf-more">顯示更多</button>`;
@@ -559,8 +610,7 @@
     el.innerHTML = `
       ${DEMO ? '<div class="demo-banner"><b>示範版</b>：卡圖、卡名、效果、價格及牌組均為示範資料（斯摩格 OP10-001 及 RG Luffy 卡表除外）。在此所作的修改只儲存於本機。正式版本請在電腦執行 <code>python3 serve.py</code>。</div>' : (CARDS.length ? '' : noDataNotice('卡表'))}
       <div class="hero-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-        <input type="search" id="h-q" placeholder="路飛 OP08, c5, p6000…" autocomplete="off" enterkeyhint="search"></div>
-      <div class="muted hint">${SEARCH_HINT}</div>
+        <input type="search" id="h-q" placeholder="路飛 OP08, c5, p6000…" autocomplete="off" enterkeyhint="search">${help(SEARCH_HELP, '搜尋語法')}</div>
       <div id="h-results"></div>
       <div class="kpis">
         <div class="kpi" role="button" tabindex="0" data-go="collection"><span>我的卡</span><b>${totalCopies.toLocaleString()}</b><small>${Object.keys(state.owned).length} 款</small></div>
@@ -630,7 +680,9 @@
   }
 
   // =============================================================== SETS
-  const sv = { group: '', set: '', parallels: false, show: '', sort: 'id', mode: 'grid' };
+  const sv = { group: '', set: '', parallels: false, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
+    bulkRarity: 'C', bulkMode: 'add', bulkN: 1 };
+  let lastBulk = null; // { set, prev, label } for undo
   try { sv.mode = localStorage.getItem('opcg-setmode') || 'grid'; } catch (e) { /* ignore */ }
   function renderSets() {
     const el = $('#tab-sets');
@@ -663,6 +715,7 @@
   }
   function setCards() {
     let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)));
+    if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
     if (sv.show === 'have') list = list.filter(c => ownedOf(c.id));
     if (sv.show === 'none') list = list.filter(c => !ownedOf(c.id));
     const cmp = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -694,6 +747,43 @@
         inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="3" aria-label="${esc(c.id)} 數量">
     </div>`;
   }
+  /** Rarities present in the current series (normal versions), in the usual order. */
+  function setRarities() {
+    const have = new Set(CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id)).map(c => c.rarity || '').filter(Boolean));
+    return Array.from(have).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+  }
+  function bulkIds(rarity) {
+    return CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id) && (c.rarity || '') === rarity).map(c => c.id);
+  }
+  function bulkBarHtml() {
+    const rars = setRarities();
+    if (!rars.includes(sv.bulkRarity)) sv.bulkRarity = rars.includes('C') ? 'C' : (rars[0] || '');
+    const undo = lastBulk && lastBulk.set === sv.set;
+    return `<div class="bulk-bar" role="group" aria-label="按稀有度批量設定">
+      <select id="bk-rarity" aria-label="稀有度">${rars.map(r => `<option${r === sv.bulkRarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
+      <span class="small muted">共 ${bulkIds(sv.bulkRarity).length} 款</span>
+      <select id="bk-mode" aria-label="方式"><option value="add"${sv.bulkMode === 'add' ? ' selected' : ''}>每款加</option><option value="set"${sv.bulkMode === 'set' ? ' selected' : ''}>每款設為</option></select>
+      <input id="bk-n" type="number" min="0" max="99" step="1" value="${esc(sv.bulkN)}" inputmode="numeric" aria-label="張數" style="width:70px"> 張
+      <button class="small primary" id="bk-apply">套用</button>
+      ${undo ? `<button class="small" id="bk-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
+      ${help('<b>開箱後點算普通卡（C）</b><br>1. 選「C」、「每款加」及你估計每款的張數，按「套用」。<br>2. 在上方稀有度選「C」，切換到「批量輸入」，逐張修正多出或不足的。<br>只會改動此系列的普通版，不影響平行版。按「撤銷」可還原上一次批量設定。', '批量設定說明')}
+    </div>`;
+  }
+  async function applyBulk() {
+    const ids = bulkIds(sv.bulkRarity);
+    const n = Math.max(0, Math.floor(Number(sv.bulkN) || 0));
+    if (!ids.length) { toast('此系列沒有這個稀有度的卡'); return; }
+    if (sv.bulkMode === 'add' && n === 0) { toast('請輸入要加的張數'); return; }
+    const label = `${sv.set} ${sv.bulkRarity} ${sv.bulkMode === 'add' ? '每款加 ' + n : '每款設為 ' + n} 張`;
+    const ok = await ask(`把 ${sv.set} 的 ${sv.bulkRarity}（共 ${ids.length} 款）${sv.bulkMode === 'add' ? `每款加 ${n} 張` : `每款設為 ${n} 張`}？`, { ok: '套用' });
+    if (!ok) return;
+    const res = E.bulkSet(state.owned, ids, sv.bulkMode, n);
+    state.owned = res.owned;
+    lastBulk = { set: sv.set, prev: res.prev, label };
+    save();
+    toast(`已更新 ${ids.length} 款；如有錯可按「撤銷」`);
+    renderSets();
+  }
   function renderSetPage(el) {
     const batch = sv.mode === 'batch';
     el.innerHTML = `
@@ -701,13 +791,16 @@
       <div class="toolbar">
         <div class="seg" role="group" aria-label="顯示方式">
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
+        ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
         <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括平行版</label>
+        <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setRarities().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option></select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>
+        <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
-      ${batch ? `<p class="muted small batch-help">輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0。每次輸入均即時儲存。</p>
-        <div class="batch" id="sp-batch">${setCards().map(batchRowHtml).join('')}</div>`
+      ${sv.bulkOpen ? bulkBarHtml() : ''}
+      ${batch ? `<div class="batch" id="sp-batch">${setCards().map(batchRowHtml).join('')}</div>`
         : '<div class="grid" id="sp-grid"></div>'}`;
     $('#sp-show').value = sv.show; $('#sp-sort').value = sv.sort;
     if (!batch) {
@@ -741,9 +834,16 @@
       if (first && matchMedia('(pointer: fine)').matches) first.focus();
     }
     el.onclick = e => {
-      if (e.target.closest('[data-back]')) { sv.set = ''; return renderSets(); }
+      if (e.target.closest('[data-back]')) { sv.set = ''; sv.rarity = ''; return renderSets(); }
       const m = e.target.closest('[data-mode]');
       if (m) { sv.mode = m.dataset.mode; try { localStorage.setItem('opcg-setmode', sv.mode); } catch (err) { /* ignore */ } return renderSets(); }
+      if (e.target.closest('#sp-bulk-toggle')) { sv.bulkOpen = !sv.bulkOpen; return renderSets(); }
+      if (e.target.closest('#bk-apply')) return applyBulk();
+      if (e.target.closest('#bk-undo') && lastBulk) {
+        state.owned = E.undoBulk(state.owned, lastBulk.prev);
+        toast('已撤銷：' + lastBulk.label);
+        lastBulk = null; save(); return renderSets();
+      }
       if (e.target.closest('#sp-copy')) {
         const miss = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)) && !ownedOf(c.id));
         return copyText(miss.map(c => `${c.id} ${c.rarity || ''} ${c.name || ''}`).join('\n'));
@@ -756,8 +856,15 @@
       tile.outerHTML = tileHtml(byId[id] || { id }, E.reservedTotals(state.decks));
       $('#sp-summary').innerHTML = setSummaryHtml();
     };
+    el.onkeydown = e => {
+      if (e.target.id === 'bk-n' && e.key === 'Enter') { e.preventDefault(); sv.bulkN = e.target.value; applyBulk(); }
+    };
     el.onchange = e => {
       if (e.target.dataset.bid) return;
+      if (e.target.id === 'bk-rarity') { sv.bulkRarity = e.target.value; return renderSets(); }
+      if (e.target.id === 'bk-mode') { sv.bulkMode = e.target.value; return; }
+      if (e.target.id === 'bk-n') { sv.bulkN = e.target.value; return; }
+      if (e.target.id === 'sp-rarity') sv.rarity = e.target.value;
       if (e.target.id === 'sp-par') sv.parallels = e.target.checked;
       if (e.target.id === 'sp-show') sv.show = e.target.value;
       if (e.target.id === 'sp-sort') sv.sort = e.target.value;
@@ -772,18 +879,16 @@
     el.innerHTML = `
       <div class="cols">
         <div class="panel quick">
-          <h2>開箱快速輸入</h2>
+          <h2>開箱快速輸入 ${help('輸入卡號後按 Enter，即加一張：<br><code>OP08-001</code>、<code>08-001</code>，或只輸入 <code>1</code>（使用預設系列）。<br>平行版：<code>001p1</code>。輸入錯了可在下方按「撤銷」。', '開箱說明')}</h2>
           <div class="toolbar">
             <label>預設系列 <select id="q-set"><option value="">（無）</option>${SETS.map(s => `<option${s === set ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
-            <span class="muted">輸入卡號後按 Enter：<code>OP08-001</code>、<code>08-001</code>，或只輸入 <code>1</code> / <code>001p1</code>（用預設系列）</span>
           </div>
           <input id="q-input" autocomplete="off" inputmode="text" placeholder="例如 045 或 OP09-118">
           <div id="q-preview" class="muted" style="min-height:22px;margin-top:6px"></div>
           <ul class="log" id="q-log"></ul>
         </div>
         <div class="panel">
-          <h2>一次加入多張</h2>
-          <p class="muted">每行一款：<code>OP08-001 x2</code>、<code>3 OP09-045</code>、<code>OP08-118_p1</code>。平行版／異圖會分開記錄。</p>
+          <h2>一次加入多張 ${help('每行一款：<code>OP08-001 x2</code>、<code>3 OP09-045</code>、<code>OP08-118_p1</code>。<br>平行版／異圖會分開記錄。', '格式說明')}</h2>
           <textarea id="bulk" placeholder="OP08-001 x2&#10;OP08-045 x3"></textarea>
           <div class="actions" style="margin-top:8px"><button class="primary" id="bulk-add">加入卡庫</button><button id="bulk-sub">從卡庫扣除</button></div>
         </div>
@@ -953,8 +1058,7 @@
     return bits.length || link ? `<div class="muted small">${esc(bits.join(' · '))}${link && /^https?:/.test(link) ? ` · <a href="${esc(link)}" target="_blank" rel="noopener">原牌組 ›</a>` : ''}</div>` : '';
   }
   function importPanelHtml(open) {
-    return `<details class="panel import"${open ? ' open' : ''}><summary><b>＋ 貼上牌組連結或牌組清單</b></summary>
-      <p class="muted small">在 onepiecetopdecks 選好想組建的牌組後，複製其 <b>deckgen 連結</b>（可一次貼上多條，每行一條）或「Decklist in text」（<code>4xOP08-002</code>）並貼上。牌組名稱、作者、名次、比賽及日期會自動讀入。</p>
+    return `<details class="panel import"${open ? ' open' : ''}><summary><b>＋ 貼上牌組連結或牌組清單</b> ${help('在 onepiecetopdecks 選好牌組後，複製其 <b>deckgen 連結</b>（可一次貼上多條，每行一條）或「Decklist in text」（<code>4xOP08-002</code>）並貼上。<br>牌組名稱、作者、名次、比賽及日期會自動讀入。', '匯入說明')}</summary>
       <textarea class="imp-text" aria-label="牌組連結或牌組清單" placeholder="https://onepiecetopdecks.com/deck-list/.../deckgen/?dn=...&amp;dg=1nOP13-001a4nOP13-016...&#10;或&#10;1xOP13-001&#10;4xOP13-016&#10;..."></textarea>
       <div class="imp-preview muted small"></div>
       <div class="actions" style="margin-top:8px"><input class="imp-name" placeholder="牌組名稱（可留空）" aria-label="牌組名稱" style="flex:1;min-width:0"><button class="primary imp-go">匯入</button></div></details>`;
@@ -1271,6 +1375,75 @@
   }
 
   // ============================================================ SETTINGS
+  function autoSetting() {
+    const a = settings().autoUpdate || {};
+    return { mode: a.mode === 'auto' ? 'auto' : 'manual', every: a.every === 'weekly' ? 'weekly' : 'daily',
+      cards: a.cards !== false, prices: a.prices !== false, decks: a.decks !== false };
+  }
+  const AUTO_LABEL = { cards: '卡表及卡圖（新系列、新卡、新卡圖）', prices: '價格', decks: '熱門牌組' };
+  let autoInfo = null; // { cloud, status } from the server
+  function autoPanelHtml() {
+    const a = autoSetting();
+    const auto = a.mode === 'auto';
+    // Warnings stay visible; plain explanations go behind the "?" button.
+    const where = !serverOk ? '<p class="warn small">自動更新需要以本機伺服器（OPCG-Start.command）或網上版本執行；目前的設定會保存，待之後生效。</p>' : '';
+    const whenText = autoInfo && autoInfo.cloud ? '網上版本：Google Cloud 每日凌晨 4 時（香港時間）檢查一次，到期的項目會自動更新，無須開啟本頁。'
+      : '電腦版本：程式開啟期間每 30 分鐘檢查一次，到期的項目會自動更新；程式關閉時不會更新。';
+    const tasks = (autoInfo && autoInfo.status && autoInfo.status.tasks) || {};
+    const when = t => t ? new Date(t * 1000).toLocaleString('zh-HK', { hour12: false }) : '';
+    const last = Object.keys(AUTO_LABEL).filter(k => tasks[k]).map(k => {
+      const r = tasks[k];
+      return `<li><b>${esc(AUTO_LABEL[k].split('（')[0])}</b>：${esc(when(r.at))} · ${r.code === 0 ? '<span class="ok">成功</span>' : `<span class="bad">失敗（代碼 ${esc(r.code)}）</span>`}
+        ${(r.summary || []).length ? `<br><span class="muted small">${esc(r.summary.join('　'))}</span>` : ''}</li>`;
+    }).join('');
+    return `
+      <div class="toolbar" style="margin:0"><div class="seg" role="radiogroup" aria-label="更新方式">
+        <button role="radio" aria-checked="${!auto}" data-automode="manual" class="${auto ? '' : 'on'}">手動</button><button role="radio" aria-checked="${auto}" data-automode="auto" class="${auto ? 'on' : ''}">自動</button>
+      </div>${help('<b>手動</b>：只在你按「檢查新系列及卡圖」等按鈕時更新。<br><b>自動</b>：按所選項目及頻率定期更新。<br>' + whenText, '更新方式說明')}</div>
+
+      <fieldset class="auto-opts"${auto ? '' : ' disabled'}>
+        <legend class="small muted">自動更新的項目</legend>
+        ${Object.keys(AUTO_LABEL).map(k => `<label class="small"><input type="checkbox" data-autotask="${k}"${a[k] ? ' checked' : ''}> ${esc(AUTO_LABEL[k])}</label>`).join('')}
+        <label class="small">頻率 <select id="auto-every"><option value="daily"${a.every === 'daily' ? ' selected' : ''}>每日</option><option value="weekly"${a.every === 'weekly' ? ' selected' : ''}>每週</option></select></label>
+      </fieldset>
+      ${where}
+      ${serverOk ? '<div class="actions"><button class="small" data-bot="auto">立即執行一次</button></div>' : ''}
+      ${last ? `<h3 style="margin-top:12px">最近一次更新</h3><ul class="auto-last">${last}</ul>` : ''}`;
+  }
+  function bindAutoPanel() {
+    const panel = $('#auto-panel');
+    if (!panel) return;
+    const set = patch => {
+      settings().autoUpdate = Object.assign(autoSetting(), patch);
+      save();
+      panel.innerHTML = '<h2>更新方式</h2>' + autoPanelHtml();
+      if (serverOk) $$('[data-bot]', panel).forEach(bindBotButton);
+    };
+    panel.onclick = e => {
+      const m = e.target.closest('[data-automode]');
+      if (m) { set({ mode: m.dataset.automode }); toast(m.dataset.automode === 'auto' ? '已改為自動更新' : '已改為手動更新'); }
+    };
+    panel.onchange = e => {
+      const t = e.target.closest('[data-autotask]');
+      if (t) set({ [t.dataset.autotask]: t.checked });
+      if (e.target.id === 'auto-every') set({ every: e.target.value });
+    };
+    if (serverOk && !autoInfo) {
+      fetch('/api/auto', { cache: 'no-store' }).then(r => r.json()).then(j => {
+        autoInfo = j;
+        if (current === 'settings') { panel.innerHTML = '<h2>更新方式</h2>' + autoPanelHtml(); $$('[data-bot]', panel).forEach(bindBotButton); }
+      }).catch(() => { /* older server without /api/auto */ });
+    }
+  }
+  function bindBotButton(b) {
+    if (b.dataset.bound) return;
+    b.dataset.bound = '1';
+    b.addEventListener('click', async () => {
+      await fetch('/api/bot/' + b.dataset.bot, { method: 'POST' });
+      if (b.dataset.bot === 'auto') autoInfo = null;
+      pollBot(b.dataset.bot);
+    });
+  }
   function renderSettings() {
     const el = $('#tab-settings');
     const cs = window.OPCG_CARDS, ds = window.OPCG_DECKS;
@@ -1281,19 +1454,19 @@
           <p>熱門牌組：${ds ? `<b>${META.length}</b> 副 · 更新 ${esc((ds.scrapedAt || '').slice(0, 16).replace('T', ' '))}` : '<span class="warn">未有</span>'}</p>
           <p>價格：${PRICES.fetchedAt ? `<b>${Object.keys(PRICES.prices).length}</b> 款 · 更新 ${esc(PRICES.fetchedAt.slice(0, 16).replace('T', ' '))}` : '<span class="warn">未有</span>'} · 手動價 <b>${Object.keys(state.manualPrices).length}</b> 款</p>
           <div id="bot-box">${serverOk ? `
-            <div class="actions"><button class="primary" data-bot="update">檢查新系列及卡圖</button><button data-bot="cards">只更新卡表（不下載卡圖）</button><button data-bot="decks">更新牌組清單</button><button data-bot="prices">更新價格</button></div>
-            <p class="muted small">「檢查新系列及卡圖」會重新讀取官方卡表，找出新系列及新卡，並只下載新增或已更換的卡圖。第一次下載全部卡圖約需 30–60 分鐘，之後通常只需數分鐘。</p>
+            <div class="actions"><button class="primary" data-bot="update">檢查新系列及卡圖</button><button data-bot="cards">只更新卡表（不下載卡圖）</button><button data-bot="decks">更新牌組清單</button><button data-bot="prices">更新價格</button>
+              ${help('「檢查新系列及卡圖」會重新讀取官方卡表，找出新系列及新卡，並只下載新增或已更換的卡圖。<br>第一次下載全部卡圖約需 30–60 分鐘，之後通常只需數分鐘。', 'BOT 說明')}</div>
             <pre id="bot-log" class="muted" style="max-height:260px;overflow:auto"></pre>` : noDataNotice('伺服器').replace('未有伺服器資料。', 'BOT 需要在電腦上執行。')}</div>
         </div>
+        <div class="panel" id="auto-panel"><h2>更新方式</h2>${autoPanelHtml()}</div>
         <div class="panel"><h2>設定</h2>
-          <label><input type="checkbox" id="set-par"${settings().includeParallels ? ' checked' : ''}> 計算牌組時一併計入平行版／異圖（售出牌組時會先使用普通版）</label>
-          <h3 style="margin-top:16px">價格</h3>
-          <p class="muted" style="margin:0 0 6px">自動價格 = 悠々亭日版售價（JPY）× 匯率 × 係數。港版／亞洲中文版的行情通常與日版不同，可用係數調整（例如 0.8）。手動價格永遠優先。</p>
+          <label><input type="checkbox" id="set-par"${settings().includeParallels ? ' checked' : ''}> 計算牌組時計入平行版</label>
+          ${help('勾選後，計算牌組是否齊卡時會一併計入平行版／異圖。售出牌組時會先扣除普通版。', '平行版說明')}
+          <h3 style="margin-top:16px">價格 ${help('自動價格 = 悠々亭日版售價（JPY）× 匯率 × 係數。<br>港版／亞洲中文版的行情通常與日版不同，可用係數調整（例如 0.8）。<br>手動價格永遠優先。<br>匯率留空即使用 BOT 最近取得的匯率（' + esc(PRICES.jpyToHkd || DEFAULT_RATE + '，預設值') + '）。', '價格計算說明')}</h3>
           <div class="toolbar">
             <label>1 JPY = <input id="set-rate" type="number" step="0.0001" min="0" style="width:100px" placeholder="${esc(PRICES.jpyToHkd || DEFAULT_RATE)}"> HKD</label>
             <label>係數 × <input id="set-factor" type="number" step="0.05" min="0" style="width:80px"></label>
           </div>
-          <p class="muted" style="margin:0">匯率留空即使用 BOT 最近取得的匯率（${esc(PRICES.jpyToHkd || DEFAULT_RATE + '，預設值')}）。</p>
           <h3 style="margin-top:16px">備份</h3>
           <div class="actions"><button id="exp">匯出備份（JSON）</button><label class="small"><input type="file" id="imp" accept=".json,application/json" hidden><span class="small" style="border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer">匯入備份</span></label>
             <button id="exp-csv">匯出卡庫 CSV</button></div>
@@ -1336,11 +1509,9 @@
       if (!(await ask('確定要清除所有卡庫及牌組資料？建議先匯出備份。', { ok: '清除', danger: true }))) return;
       state = blankState(); save(); toast('已清除'); renderSettings();
     });
+    bindAutoPanel();
     if (serverOk) {
-      $$('[data-bot]').forEach(b => b.addEventListener('click', async () => {
-        await fetch('/api/bot/' + b.dataset.bot, { method: 'POST' });
-        pollBot(b.dataset.bot);
-      }));
+      $$('[data-bot]').forEach(bindBotButton);
       pollBot();
     }
   }
