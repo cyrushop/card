@@ -671,7 +671,9 @@
   }
 
   // =============================================================== SETS
-  const sv = { group: '', set: '', parallels: false, show: '', sort: 'id', mode: 'grid' };
+  const sv = { group: '', set: '', parallels: false, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
+    bulkRarity: 'C', bulkMode: 'add', bulkN: 1 };
+  let lastBulk = null; // { set, prev, label } for undo
   try { sv.mode = localStorage.getItem('opcg-setmode') || 'grid'; } catch (e) { /* ignore */ }
   function renderSets() {
     const el = $('#tab-sets');
@@ -704,6 +706,7 @@
   }
   function setCards() {
     let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)));
+    if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
     if (sv.show === 'have') list = list.filter(c => ownedOf(c.id));
     if (sv.show === 'none') list = list.filter(c => !ownedOf(c.id));
     const cmp = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -735,6 +738,43 @@
         inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="3" aria-label="${esc(c.id)} 數量">
     </div>`;
   }
+  /** Rarities present in the current series (normal versions), in the usual order. */
+  function setRarities() {
+    const have = new Set(CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id)).map(c => c.rarity || '').filter(Boolean));
+    return Array.from(have).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+  }
+  function bulkIds(rarity) {
+    return CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id) && (c.rarity || '') === rarity).map(c => c.id);
+  }
+  function bulkBarHtml() {
+    const rars = setRarities();
+    if (!rars.includes(sv.bulkRarity)) sv.bulkRarity = rars.includes('C') ? 'C' : (rars[0] || '');
+    const undo = lastBulk && lastBulk.set === sv.set;
+    return `<div class="bulk-bar" role="group" aria-label="按稀有度批量設定">
+      <select id="bk-rarity" aria-label="稀有度">${rars.map(r => `<option${r === sv.bulkRarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
+      <span class="small muted">共 ${bulkIds(sv.bulkRarity).length} 款</span>
+      <select id="bk-mode" aria-label="方式"><option value="add"${sv.bulkMode === 'add' ? ' selected' : ''}>每款加</option><option value="set"${sv.bulkMode === 'set' ? ' selected' : ''}>每款設為</option></select>
+      <input id="bk-n" type="number" min="0" max="99" step="1" value="${esc(sv.bulkN)}" inputmode="numeric" aria-label="張數" style="width:70px"> 張
+      <button class="small primary" id="bk-apply">套用</button>
+      ${undo ? `<button class="small" id="bk-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
+      ${help('<b>開箱後點算普通卡（C）</b><br>1. 選「C」、「每款加」及你估計每款的張數，按「套用」。<br>2. 在上方稀有度選「C」，切換到「批量輸入」，逐張修正多出或不足的。<br>只會改動此系列的普通版，不影響平行版。按「撤銷」可還原上一次批量設定。', '批量設定說明')}
+    </div>`;
+  }
+  async function applyBulk() {
+    const ids = bulkIds(sv.bulkRarity);
+    const n = Math.max(0, Math.floor(Number(sv.bulkN) || 0));
+    if (!ids.length) { toast('此系列沒有這個稀有度的卡'); return; }
+    if (sv.bulkMode === 'add' && n === 0) { toast('請輸入要加的張數'); return; }
+    const label = `${sv.set} ${sv.bulkRarity} ${sv.bulkMode === 'add' ? '每款加 ' + n : '每款設為 ' + n} 張`;
+    const ok = await ask(`把 ${sv.set} 的 ${sv.bulkRarity}（共 ${ids.length} 款）${sv.bulkMode === 'add' ? `每款加 ${n} 張` : `每款設為 ${n} 張`}？`, { ok: '套用' });
+    if (!ok) return;
+    const res = E.bulkSet(state.owned, ids, sv.bulkMode, n);
+    state.owned = res.owned;
+    lastBulk = { set: sv.set, prev: res.prev, label };
+    save();
+    toast(`已更新 ${ids.length} 款；如有錯可按「撤銷」`);
+    renderSets();
+  }
   function renderSetPage(el) {
     const batch = sv.mode === 'batch';
     el.innerHTML = `
@@ -744,10 +784,13 @@
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
         <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括平行版</label>
+        <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setRarities().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option></select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>
+        <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
+      ${sv.bulkOpen ? bulkBarHtml() : ''}
       ${batch ? `<div class="batch" id="sp-batch">${setCards().map(batchRowHtml).join('')}</div>`
         : '<div class="grid" id="sp-grid"></div>'}`;
     $('#sp-show').value = sv.show; $('#sp-sort').value = sv.sort;
@@ -782,9 +825,16 @@
       if (first && matchMedia('(pointer: fine)').matches) first.focus();
     }
     el.onclick = e => {
-      if (e.target.closest('[data-back]')) { sv.set = ''; return renderSets(); }
+      if (e.target.closest('[data-back]')) { sv.set = ''; sv.rarity = ''; return renderSets(); }
       const m = e.target.closest('[data-mode]');
       if (m) { sv.mode = m.dataset.mode; try { localStorage.setItem('opcg-setmode', sv.mode); } catch (err) { /* ignore */ } return renderSets(); }
+      if (e.target.closest('#sp-bulk-toggle')) { sv.bulkOpen = !sv.bulkOpen; return renderSets(); }
+      if (e.target.closest('#bk-apply')) return applyBulk();
+      if (e.target.closest('#bk-undo') && lastBulk) {
+        state.owned = E.undoBulk(state.owned, lastBulk.prev);
+        toast('已撤銷：' + lastBulk.label);
+        lastBulk = null; save(); return renderSets();
+      }
       if (e.target.closest('#sp-copy')) {
         const miss = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)) && !ownedOf(c.id));
         return copyText(miss.map(c => `${c.id} ${c.rarity || ''} ${c.name || ''}`).join('\n'));
@@ -797,8 +847,15 @@
       tile.outerHTML = tileHtml(byId[id] || { id }, E.reservedTotals(state.decks));
       $('#sp-summary').innerHTML = setSummaryHtml();
     };
+    el.onkeydown = e => {
+      if (e.target.id === 'bk-n' && e.key === 'Enter') { e.preventDefault(); sv.bulkN = e.target.value; applyBulk(); }
+    };
     el.onchange = e => {
       if (e.target.dataset.bid) return;
+      if (e.target.id === 'bk-rarity') { sv.bulkRarity = e.target.value; return renderSets(); }
+      if (e.target.id === 'bk-mode') { sv.bulkMode = e.target.value; return; }
+      if (e.target.id === 'bk-n') { sv.bulkN = e.target.value; return; }
+      if (e.target.id === 'sp-rarity') sv.rarity = e.target.value;
       if (e.target.id === 'sp-par') sv.parallels = e.target.checked;
       if (e.target.id === 'sp-show') sv.show = e.target.value;
       if (e.target.id === 'sp-sort') sv.sort = e.target.value;

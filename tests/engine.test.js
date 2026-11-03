@@ -243,4 +243,18 @@ t('several links in one paste make several decks', () => {
   assert.strictEqual(E.isoDate('3/9/2026'), '2026-03-09');
 });
 
+t('bulk set by rarity, with undo', () => {
+  const owned = { 'OP10-004': 1, 'OP10-005': 3, 'OP10-099': 2 };
+  const ids = ['OP10-004', 'OP10-005', 'OP10-006'];
+  const a = E.bulkSet(owned, ids, 'add', 2);
+  assert.deepStrictEqual(a.owned, { 'OP10-004': 3, 'OP10-005': 5, 'OP10-006': 2, 'OP10-099': 2 });
+  assert.deepStrictEqual(a.prev, { 'OP10-004': 1, 'OP10-005': 3, 'OP10-006': 0 });
+  assert.deepStrictEqual(E.undoBulk(a.owned, a.prev), owned);
+  const b = E.bulkSet(owned, ids, 'set', 0);
+  assert.deepStrictEqual(b.owned, { 'OP10-099': 2 });
+  assert.deepStrictEqual(E.undoBulk(b.owned, b.prev), owned);
+  assert.deepStrictEqual(E.bulkSet(owned, ['OP10-004'], 'set', '-3').owned['OP10-004'], undefined, 'never below 0');
+  assert.deepStrictEqual(owned, { 'OP10-004': 1, 'OP10-005': 3, 'OP10-099': 2 }, 'input untouched');
+});
+
 console.log(`\n${passed} tests passed`);

@@ -435,6 +435,33 @@
     return { code, total, have, copies, pct: total ? have / total : 0, byRarity };
   }
 
+  /**
+   * Bulk change for many cards at once (e.g. every C card of a series after opening a box).
+   * mode 'add': add n to each; mode 'set': set each to n. Never below 0.
+   * Returns the new owned map and `prev` (id -> old count, 0 when absent) for undo.
+   */
+  function bulkSet(owned, ids, mode, n) {
+    const next = Object.assign({}, owned);
+    const prev = {};
+    n = Math.max(0, Math.floor(Number(n) || 0));
+    for (const id of ids) {
+      const old = next[id] || 0;
+      const val = mode === 'set' ? n : old + n;
+      prev[id] = old;
+      if (val > 0) next[id] = val; else delete next[id];
+    }
+    return { owned: next, prev };
+  }
+
+  /** Undo a bulkSet: put back the counts it replaced. */
+  function undoBulk(owned, prev) {
+    const next = Object.assign({}, owned);
+    for (const [id, old] of Object.entries(prev || {})) {
+      if (old > 0) next[id] = old; else delete next[id];
+    }
+    return next;
+  }
+
   /** Set code of a card: 'OP08-001' -> 'OP08', 'P-001' -> 'P'. */
   function setOf(id) {
     return String(id || '').split('-')[0].toUpperCase();
@@ -444,7 +471,7 @@
     normId, baseId, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, setGroup, inSet, setProgress, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;
