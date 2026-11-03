@@ -206,6 +206,53 @@ class PriceBot(unittest.TestCase):
         self.assertFalse(scrape_prices.is_parallel("L", "ルフィ"))
 
 
+# Layout as on the live Yuyu-tei page (Nov 2026): every box starts with a favourite-star image,
+# the card picture's alt text carries number and rarity, and a newer series can list a parallel
+# reprint that keeps an old number (OP11-022 inside EB05).
+YUYU_LIVE = """
+<div class="col-md"><div class="card-product position-relative mt-4">
+ <div class="starbtn"><img src="star.svg" alt="Star" class="star"/></div>
+ <a href="https://yuyu-tei.jp/sell/opc/card/eb05/10019"><img src="x.jpg" alt="EB05-014 SR しらほし" class="card"/></a>
+ <span class="d-block">EB05-014</span><h4>しらほし</h4><strong class="d-block text-end">280 円</strong><label>在庫 : 9 点</label></div></div>
+<div class="col-md"><div class="card-product position-relative mt-4">
+ <div class="starbtn"><img src="star.svg" alt="Star" class="star"/></div>
+ <a href="https://yuyu-tei.jp/sell/opc/card/eb05/10021"><img src="x.jpg" alt="EB05-014 P-SR しらほし(パラレル)(スーパーパラレル）" class="card"/></a>
+ <span class="d-block">EB05-014</span><h4>しらほし(パラレル)(スーパーパラレル）</h4><strong class="d-block text-end">79,800 円</strong><label>在庫 : 0 点</label></div></div>
+<div class="col-md"><div class="card-product position-relative mt-4">
+ <div class="starbtn"><img src="star.svg" alt="Star" class="star"/></div>
+ <a href="https://yuyu-tei.jp/sell/opc/card/eb05/10020"><img src="x.jpg" alt="EB05-014 P-SR しらほし(パラレル)" class="card"/></a>
+ <span class="d-block">EB05-014</span><h4>しらほし(パラレル)</h4><strong class="d-block text-end">1,480 円</strong><label>在庫 : 6 点</label></div></div>
+<div class="col-md"><div class="card-product position-relative mt-4">
+ <div class="starbtn"><img src="star.svg" alt="Star" class="star"/></div>
+ <a href="https://yuyu-tei.jp/sell/opc/card/eb05/10090"><img src="x.jpg" alt="OP11-022 P-L しらほし(パラレル)" class="card"/></a>
+ <span class="d-block">OP11-022</span><h4>しらほし(パラレル)</h4><strong class="d-block text-end">4,980 円</strong><label>在庫 : 2 点</label></div></div>
+"""
+OFFICIAL_EB05 = [  # from the official card list: ids that belong to series EB05
+    {"id": "EB05-014", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
+    {"id": "EB05-014_p1", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
+    {"id": "EB05-014_p2", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
+    {"id": "OP11-022_p2", "baseId": "OP11-022", "series": [{"code": "EB05"}]},
+    {"id": "OP11-022", "baseId": "OP11-022", "series": [{"code": "OP11"}]},
+    {"id": "OP11-022_p1", "baseId": "OP11-022", "series": [{"code": "OP11"}]},
+]
+
+
+class PriceBotLiveLayout(unittest.TestCase):
+    def test_rarity_from_the_card_picture_not_the_star_icon(self):
+        rows = scrape_prices.parse_shop(YUYU_LIVE, "https://yuyu-tei.jp/sell/opc/s/eb05")
+        self.assertEqual([r["rarity"] for r in rows], ["SR", "P-SR", "P-SR", "P-L"])
+
+    def test_matches_official_ids_including_reprints(self):
+        rows = scrape_prices.parse_shop(YUYU_LIVE, "https://yuyu-tei.jp/sell/opc/s/eb05")
+        official = scrape_prices.official_versions(OFFICIAL_EB05, "EB05")
+        self.assertEqual(official["OP11-022"], ["OP11-022_p2"])  # only the EB05 reprint, not OP11's own cards
+        ids = scrape_prices.map_ids(rows, "EB05", official)
+        self.assertEqual({k: v["jpy"] for k, v in ids.items()},
+                         {"EB05-014": 280, "EB05-014_p1": 1480, "EB05-014_p2": 79800, "OP11-022_p2": 4980})
+        # Without the official list the reprint would be guessed as OP11-022_p1, which is a different card.
+        self.assertIn("OP11-022_p1", scrape_prices.map_ids(rows, "EB05"))
+
+
 class CardUpdate(unittest.TestCase):
     """The update button: new series, new cards and replaced images are found; nothing else is downloaded again."""
 
