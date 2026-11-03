@@ -19,6 +19,7 @@ CARDLIST = """
   <option value="554110">擴充包【OP-10】</option>
   <option value="554108">擴充包【OP-08】</option>
   <option value="554201">額外補充包【EB-02】</option>
+  <option value="554205">特殊補充包 &lt;br class="spInline"&gt;ONE PIECE Heroines Edition【EB-05】</option>
   <option value="554901">推廣卡</option>
 </select></form>
 <div class="resultCol">
@@ -112,8 +113,10 @@ YUYU = """
 class CardBot(unittest.TestCase):
     def test_series(self):
         s = scrape_cards.parse_series(CARDLIST)
-        self.assertEqual([x["value"] for x in s], ["554110", "554108", "554201", "554901"])
-        self.assertEqual([x["code"] for x in s], ["OP10", "OP08", "EB02", ""])
+        self.assertEqual([x["value"] for x in s], ["554110", "554108", "554201", "554205", "554901"])
+        self.assertEqual([x["code"] for x in s], ["OP10", "OP08", "EB02", "EB05", ""])
+        # As on the live site (Nov 2026): an escaped <br> inside the option text is removed.
+        self.assertEqual(s[3]["label"], "特殊補充包 ONE PIECE Heroines Edition【EB-05】")
         self.assertEqual([x["value"] for x in scrape_cards.pick_series(s, "op08,554201")], ["554108", "554201"])
 
     def test_cards(self):

@@ -60,7 +60,8 @@ def parse_series(html):
     out = []
     for opt in (sel.find_all("option") if sel else []):
         value = (opt.attrs.get("value") or "").strip()
-        label = htmldom.clean(opt.text())
+        # The site writes some names with an escaped line break, e.g. '特殊補充包 <br class="spInline">ONE PIECE ...'.
+        label = htmldom.clean(re.sub(r"<[^>]*>", " ", opt.text()))
         if value and value.isdigit():
             out.append({"value": value, "label": label, "code": set_code(label)})
     return out
