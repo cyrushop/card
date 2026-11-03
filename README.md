@@ -59,6 +59,14 @@ python3 bot/scrape_decks.py
 
 不啟動 `serve.py` 亦可直接開啟 `app/index.html`，但資料只會儲存於瀏覽器（請記得在「設定」匯出備份）。
 
+## 網上版本（Google Cloud，只限自己使用）
+
+可部署到 Google Cloud Run，以 Google 帳戶登入後在任何地方使用，其他人無法進入。資料保存在 Cloud Storage。步驟、費用及注意事項見 [deploy/README.md](deploy/README.md)。
+
+```bash
+PROJECT=你的專案ID EMAIL=你的Gmail ./deploy/deploy.sh
+```
+
 ## 功能
 
 | 分頁 | 用途 |
@@ -70,7 +78,7 @@ python3 bot/scrape_decks.py
 | 熱門牌組 | onepiecetopdecks 的比賽牌組，按「最齊卡優先」排序，顯示欠多少張及欠哪些卡，一按即可加入我的牌組。 |
 | 我的牌組 | 計劃中 → 已組好（預留卡，其他牌組不會再計算這些卡）→ 已售出（從卡庫扣除，記錄售價及收入）。顯示牌組市值、補齊所需金額及預計盈虧；售出時記錄當時市值以計算總盈虧。可編輯，並檢查規則（1 張領航卡、50 張、每款最多 4 張、顏色）。設有合併補卡清單。 |
 | 高價卡 | 單價 HK$50（可調整）或以上的卡：單價、數量、總值、7 日升跌、悠々亭連結。可逐張輸入手動價格。顯示整個卡庫的總值（可隱藏），可匯出 CSV。 |
-| 設定 | 執行 BOT、匯率及價格係數、牌組是否計入平行版、匯出／匯入 JSON 備份、匯出 CSV。 |
+| 設定 | 執行 BOT；**更新方式（手動／自動，可選項目及每日／每週）**；匯率及價格係數；牌組是否計入平行版；匯出／匯入 JSON 備份；匯出 CSV。 |
 
 ### 檢查新系列及卡圖
 
@@ -160,4 +168,16 @@ node tests/engine.test.js
 python3 -I tests/test_bots.py
 ```
 
-測試只使用自製的 HTML 及數據。
+```bash
+python3 -I tests/test_serve.py
+```
+
+```bash
+python3 -I tests/test_auto_update.py
+```
+
+測試只使用自製的 HTML 及數據。每次推送或開 Pull Request 時，GitHub Actions 會自動執行以上測試（Python 3.9 及 3.12），並建置容器映像檔，確認未獲授權的帳戶無法進入。
+
+## 開發流程
+
+每項修改先在新分支進行，再開 Pull Request；自動測試通過並經審閱後才合併到 `main`。

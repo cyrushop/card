@@ -46,7 +46,8 @@
 
   function blankState() {
     return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [],
-      settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50 } };
+      settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50,
+        autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true } } };
   }
   function normalise(s) {
     const b = blankState();
@@ -1262,6 +1263,74 @@
   }
 
   // ============================================================ SETTINGS
+  function autoSetting() {
+    const a = settings().autoUpdate || {};
+    return { mode: a.mode === 'auto' ? 'auto' : 'manual', every: a.every === 'weekly' ? 'weekly' : 'daily',
+      cards: a.cards !== false, prices: a.prices !== false, decks: a.decks !== false };
+  }
+  const AUTO_LABEL = { cards: '卡表及卡圖（新系列、新卡、新卡圖）', prices: '價格', decks: '熱門牌組' };
+  let autoInfo = null; // { cloud, status } from the server
+  function autoPanelHtml() {
+    const a = autoSetting();
+    const auto = a.mode === 'auto';
+    const where = !serverOk ? '<p class="warn small">自動更新需要以本機伺服器（OPCG-Start.command）或網上版本執行；目前的設定會保存，待之後生效。</p>'
+      : autoInfo && autoInfo.cloud ? '<p class="muted small">網上版本：Google Cloud 每日凌晨 4 時（香港時間）檢查一次，到期的項目會自動更新，無須開啟本頁。</p>'
+      : '<p class="muted small">電腦版本：程式開啟期間，每 30 分鐘檢查一次，到期的項目會自動更新。程式關閉時不會更新。</p>';
+    const tasks = (autoInfo && autoInfo.status && autoInfo.status.tasks) || {};
+    const when = t => t ? new Date(t * 1000).toLocaleString('zh-HK', { hour12: false }) : '';
+    const last = Object.keys(AUTO_LABEL).filter(k => tasks[k]).map(k => {
+      const r = tasks[k];
+      return `<li><b>${esc(AUTO_LABEL[k].split('（')[0])}</b>：${esc(when(r.at))} · ${r.code === 0 ? '<span class="ok">成功</span>' : `<span class="bad">失敗（代碼 ${esc(r.code)}）</span>`}
+        ${(r.summary || []).length ? `<br><span class="muted small">${esc(r.summary.join('　'))}</span>` : ''}</li>`;
+    }).join('');
+    return `
+      <div class="seg" role="radiogroup" aria-label="更新方式">
+        <button role="radio" aria-checked="${!auto}" data-automode="manual" class="${auto ? '' : 'on'}">手動</button><button role="radio" aria-checked="${auto}" data-automode="auto" class="${auto ? 'on' : ''}">自動</button>
+      </div>
+      <p class="muted small">${auto ? '自動：按下列設定定期更新。' : '手動：只在你按「檢查新系列及卡圖」等按鈕時更新。'}</p>
+      <fieldset class="auto-opts"${auto ? '' : ' disabled'}>
+        <legend class="small muted">自動更新的項目</legend>
+        ${Object.keys(AUTO_LABEL).map(k => `<label class="small"><input type="checkbox" data-autotask="${k}"${a[k] ? ' checked' : ''}> ${esc(AUTO_LABEL[k])}</label>`).join('')}
+        <label class="small">頻率 <select id="auto-every"><option value="daily"${a.every === 'daily' ? ' selected' : ''}>每日</option><option value="weekly"${a.every === 'weekly' ? ' selected' : ''}>每週</option></select></label>
+      </fieldset>
+      ${where}
+      ${serverOk ? '<div class="actions"><button class="small" data-bot="auto">立即執行一次</button></div>' : ''}
+      ${last ? `<h3 style="margin-top:12px">最近一次更新</h3><ul class="auto-last">${last}</ul>` : ''}`;
+  }
+  function bindAutoPanel() {
+    const panel = $('#auto-panel');
+    if (!panel) return;
+    const set = patch => {
+      settings().autoUpdate = Object.assign(autoSetting(), patch);
+      save();
+      panel.innerHTML = '<h2>更新方式</h2>' + autoPanelHtml();
+      if (serverOk) $$('[data-bot]', panel).forEach(bindBotButton);
+    };
+    panel.onclick = e => {
+      const m = e.target.closest('[data-automode]');
+      if (m) { set({ mode: m.dataset.automode }); toast(m.dataset.automode === 'auto' ? '已改為自動更新' : '已改為手動更新'); }
+    };
+    panel.onchange = e => {
+      const t = e.target.closest('[data-autotask]');
+      if (t) set({ [t.dataset.autotask]: t.checked });
+      if (e.target.id === 'auto-every') set({ every: e.target.value });
+    };
+    if (serverOk && !autoInfo) {
+      fetch('/api/auto', { cache: 'no-store' }).then(r => r.json()).then(j => {
+        autoInfo = j;
+        if (current === 'settings') { panel.innerHTML = '<h2>更新方式</h2>' + autoPanelHtml(); $$('[data-bot]', panel).forEach(bindBotButton); }
+      }).catch(() => { /* older server without /api/auto */ });
+    }
+  }
+  function bindBotButton(b) {
+    if (b.dataset.bound) return;
+    b.dataset.bound = '1';
+    b.addEventListener('click', async () => {
+      await fetch('/api/bot/' + b.dataset.bot, { method: 'POST' });
+      if (b.dataset.bot === 'auto') autoInfo = null;
+      pollBot(b.dataset.bot);
+    });
+  }
   function renderSettings() {
     const el = $('#tab-settings');
     const cs = window.OPCG_CARDS, ds = window.OPCG_DECKS;
@@ -1276,6 +1345,7 @@
             <p class="muted small">「檢查新系列及卡圖」會重新讀取官方卡表，找出新系列及新卡，並只下載新增或已更換的卡圖。第一次下載全部卡圖約需 30–60 分鐘，之後通常只需數分鐘。</p>
             <pre id="bot-log" class="muted" style="max-height:260px;overflow:auto"></pre>` : noDataNotice('伺服器').replace('未有伺服器資料。', 'BOT 需要在電腦上執行。')}</div>
         </div>
+        <div class="panel" id="auto-panel"><h2>更新方式</h2>${autoPanelHtml()}</div>
         <div class="panel"><h2>設定</h2>
           <label><input type="checkbox" id="set-par"${settings().includeParallels ? ' checked' : ''}> 計算牌組時一併計入平行版／異圖（售出牌組時會先使用普通版）</label>
           <h3 style="margin-top:16px">價格</h3>
@@ -1327,11 +1397,9 @@
       if (!(await ask('確定要清除所有卡庫及牌組資料？建議先匯出備份。', { ok: '清除', danger: true }))) return;
       state = blankState(); save(); toast('已清除'); renderSettings();
     });
+    bindAutoPanel();
     if (serverOk) {
-      $$('[data-bot]').forEach(b => b.addEventListener('click', async () => {
-        await fetch('/api/bot/' + b.dataset.bot, { method: 'POST' });
-        pollBot(b.dataset.bot);
-      }));
+      $$('[data-bot]').forEach(bindBotButton);
       pollBot();
     }
   }

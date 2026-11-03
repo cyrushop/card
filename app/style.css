@@ -319,3 +319,8 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .setdot .new-badge { right: 0; top: 0; }
 .update-notice { line-height: 2; }
 #h-update { margin: -2px 0 8px; }
+
+/* v8: update mode */
+.auto-opts { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.auto-opts[disabled] { opacity: .5; }
+.auto-last { margin: 0; padding-left: 18px; line-height: 1.6; }
