@@ -176,12 +176,8 @@ python3 -I tests/test_serve.py
 python3 -I tests/test_auto_update.py
 ```
 
+```bash
+python3 -I tests/test_demo.py
+```
+
 測試只使用自製的 HTML 及數據。每次推送或開 Pull Request 時，GitHub Actions 會自動執行以上測試（Python 3.9 及 3.12），並建置容器映像檔，確認未獲授權的帳戶無法進入。
-
-## 介面說明
-
-各頁的詳細說明（搜尋語法、批量輸入、開箱輸入格式、匯入方法、價格計算、更新方式等）都收在標題或按鈕旁的 **?** 圖示內，按一下才顯示，再按一下說明框、按其他地方或按 Esc 即關閉。警告及錯誤訊息則一直顯示。
-
-## 開發流程
-
-每項修改先在新分支進行，再開 Pull Request；自動測試通過並經審閱後才合併到 `main`。

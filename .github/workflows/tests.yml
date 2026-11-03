@@ -30,6 +30,9 @@ jobs:
       - name: Automatic update tests
         run: python -I tests/test_auto_update.py
 
+      - name: Demo builder tests
+        run: python -I tests/test_demo.py
+
       - name: Python files compile
         run: python -m py_compile serve.py bot/*.py tools/*.py tests/*.py
 
