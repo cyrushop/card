@@ -336,3 +336,7 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .help-table td:first-child { white-space: nowrap; }
 .hero-search .help-wrap { margin-left: 4px; }
 h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
+
+/* v10: bulk set by rarity */
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin: -4px 0 12px;
+  background: var(--panel); border: 1px dashed var(--accent); border-radius: 10px; }
