@@ -156,6 +156,22 @@ def build_state(cards):
             "openLog": log, "settings": {"includeParallels": False, "quickSet": "OP10", "rate": "", "factor": 1, "valuableMin": 50, "showEffects": True}}
 
 
+def js_assign(name, value):
+    """`window.<name> = <value>;` that is safe inside an inline <script>.
+
+    Every "<" in the JSON is written as \\u003c (same value once parsed), so text such as
+    "</script>" or "<!--" in card names or effects cannot end or break the script element.
+    """
+    return f"window.{name} = {json.dumps(value, ensure_ascii=False).replace('<', chr(92) + 'u003c')};"
+
+
+def inline_script(code, name="data"):
+    """Wrap code in <script>, refusing code that would close the element early."""
+    if re.search(r"</script|<!--", code, re.I):
+        sys.exit(f"build_demo: {name} contains '</script' or '<!--' and cannot be inlined safely")
+    return f"<script>\n{code}\n</script>"
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "opcg-demo.html"
     cards, prices, series, luffy_ids = build_data()
@@ -188,10 +204,10 @@ def main():
         "OPCG_PRICES": {"source": "sample", "fetchedAt": "2026-11-03T12:00", "currency": "JPY", "jpyToHkd": 0.049, "prices": prices},
         "OPCG_DEMO_STATE": state,
     }
-    js_data = "\n".join(f"window.{k} = {json.dumps(v, ensure_ascii=False)};" for k, v in data.items())
+    js_data = "\n".join(js_assign(k, v) for k, v in data.items())
     page = (
         f"{head}<body>\n{body}\n"
-        f"<script>\n{js_data}\n</script>\n<script>\n{read('engine.js')}\n</script>\n<script>\n{read('app.js')}\n</script>\n"
+        f"{inline_script(js_data)}\n{inline_script(read('engine.js'), 'engine.js')}\n{inline_script(read('app.js'), 'app.js')}\n"
         "</body>\n</html>\n"
     )
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

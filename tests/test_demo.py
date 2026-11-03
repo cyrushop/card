@@ -2,6 +2,7 @@
 
 Checks the single-file demo built by tools/build_demo.py (sample data only, no network).
 """
+import json
 import os
 import sys
 import tempfile
@@ -45,6 +46,21 @@ class DemoBuilder(unittest.TestCase):
         self.assertNotIn('src="engine.js"', page)
         self.assertTrue(page.rstrip().endswith("</html>"))
         self.assertIn("window.OPCG_DEMO = true;", page)
+        # Only the three inline scripts close; nothing in the data ends a script early.
+        self.assertEqual(page.lower().count("</script"), 3)
+
+    def test_data_cannot_close_the_script(self):
+        text = '</script><script>alert(1)</script><!-- 斯摩格'
+        line = build_demo.js_assign("X", {"text": text})
+        self.assertNotIn("<", line)
+        self.assertTrue(line.startswith("window.X = ") and line.endswith(";"))
+        self.assertEqual(json.loads(line[len("window.X = "):-1]), {"text": text})
+
+    def test_inline_script_refuses_closing_tag(self):
+        self.assertTrue(build_demo.inline_script("var a = 1;").startswith("<script>"))
+        for bad in ('var s = "</script>";', "var s = '<!--';"):
+            with self.assertRaises(SystemExit):
+                build_demo.inline_script(bad, "x.js")
 
 
 if __name__ == "__main__":
