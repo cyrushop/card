@@ -229,9 +229,10 @@
     const c = byId[id] || byId[E.baseId(id)];
     const src = imgSrc(id);
     const remote = c && c.localImage && c.image ? c.image : '';
-    const ph = `<span class="ph">${esc(id)}</span>`;
-    if (!src) return ph;
-    return `${ph}<img loading="lazy" referrerpolicy="no-referrer" alt="${esc(id + ' ' + (c ? c.name : ''))}" src="${esc(src)}"${remote ? ` data-remote="${esc(remote)}"` : ''} class="${cls || ''}">`;
+    if (!src) return `<span class="ph">${esc(id)}</span>`;
+    // The card number shows only if the image fails (the error handler below reveals it). It used to sit
+    // behind the image and showed through the dimmed picture of cards not owned yet.
+    return `<img loading="lazy" referrerpolicy="no-referrer" alt="${esc(id + ' ' + (c ? c.name : ''))}" src="${esc(src)}"${remote ? ` data-remote="${esc(remote)}"` : ''} class="${cls || ''}"><span class="ph" hidden>${esc(id)}</span>`;
   }
   // Fall back to the official image when a local copy is missing; hide broken images.
   document.addEventListener('error', ev => {
@@ -239,6 +240,8 @@
     if (!(img instanceof HTMLImageElement)) return;
     if (img.dataset.remote && img.src !== img.dataset.remote) { img.src = img.dataset.remote; return; }
     img.style.display = 'none';
+    const ph = img.nextElementSibling;
+    if (ph && ph.classList.contains('ph')) ph.hidden = false;
   }, true);
 
   function dots(card) {
@@ -690,8 +693,14 @@
     return sv.set ? renderSetPage(el) : renderSetIndex(el);
   }
   function renderSetIndex(el) {
+    // Only series that have cards with the current parallel setting. A card number from an old series can
+    // appear only as a parallel reprint inside a newer one (e.g. OP01-016_p9 in EB05); such a "series"
+    // is empty while parallels are hidden, and a category with nothing in it is left out too.
     const groups = {};
-    for (const code of SET_CODES) (groups[E.setGroup(code)] = groups[E.setGroup(code)] || []).push(code);
+    for (const code of SET_CODES) {
+      if (!E.setProgress(CARDS, state.owned, code, sv.parallels).total) continue;
+      (groups[E.setGroup(code)] = groups[E.setGroup(code)] || []).push(code);
+    }
     const names = Object.keys(groups);
     if (!names.includes(sv.group)) sv.group = names[0];
     el.innerHTML = `
