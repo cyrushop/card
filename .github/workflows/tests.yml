@@ -1,0 +1,81 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]   # 3.9 = the Python that ships with macOS developer tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: App engine tests
+        run: node tests/engine.test.js
+
+      - name: Bot tests
+        run: python -I tests/test_bots.py
+
+      - name: Server tests
+        run: python -I tests/test_serve.py
+
+      - name: Python files compile
+        run: python -m py_compile serve.py bot/*.py tools/*.py tests/*.py
+
+      - name: Shell scripts parse
+        run: |
+          bash -n OPCG-Start.command
+          bash -n OPCG-Phone.command
+          bash -n deploy/deploy.sh
+
+      - name: App scripts parse
+        run: |
+          node --check app/app.js
+          node --check app/engine.js
+
+  container:
+    name: Container builds and keeps strangers out
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t opcg .
+
+      - name: Refuses to start without access control
+        run: |
+          set +e
+          docker run --rm opcg
+          code=$?
+          set -e
+          test "$code" -eq 2
+
+      - name: Only the allowed Google account gets in
+        run: |
+          docker run -d --name opcg -p 8080:8080 -e ALLOWED_EMAILS=me@example.com opcg
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8080/ && break; sleep 1; done
+          me="X-Goog-Authenticated-User-Email: accounts.google.com:me@example.com"
+          other="X-Goog-Authenticated-User-Email: accounts.google.com:someone@example.com"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/app/)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "$other" http://127.0.0.1:8080/app/)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "$me" http://127.0.0.1:8080/app/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "$me" -X PUT -d '{"owned":{}}' http://127.0.0.1:8080/api/state)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "$me" http://127.0.0.1:8080/serve.py)" = 404
+
+      - name: Container log
+        if: always()
+        run: docker logs opcg || true

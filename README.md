@@ -59,6 +59,14 @@ python3 bot/scrape_decks.py
 
 不啟動 `serve.py` 亦可直接開啟 `app/index.html`，但資料只會儲存於瀏覽器（請記得在「設定」匯出備份）。
 
+## 網上版本（Google Cloud，只限自己使用）
+
+可部署到 Google Cloud Run，以 Google 帳戶登入後在任何地方使用，其他人無法進入。資料保存在 Cloud Storage。步驟、費用及注意事項見 [deploy/README.md](deploy/README.md)。
+
+```bash
+PROJECT=你的專案ID EMAIL=你的電郵 ./deploy/deploy.sh
+```
+
 ## 功能
 
 | 分頁 | 用途 |
@@ -160,4 +168,12 @@ node tests/engine.test.js
 python3 -I tests/test_bots.py
 ```
 
-測試只使用自製的 HTML 及數據。
+```bash
+python3 -I tests/test_serve.py
+```
+
+測試只使用自製的 HTML 及數據。每次推送或開 Pull Request 時，GitHub Actions 會自動執行以上測試（Python 3.9 及 3.12），並建置容器映像檔，確認未獲授權的帳戶無法進入。
+
+## 開發流程
+
+每項修改先在新分支進行，再開 Pull Request；自動測試通過並經審閱後才合併到 `main`。
