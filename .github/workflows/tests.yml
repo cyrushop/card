@@ -8,24 +8,18 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Tests (Python ${{ matrix.python }})
+  python:
+    name: Python ${{ matrix.python }} tests
     runs-on: ubuntu-latest
+    # Run inside the official images: the hosted runner no longer offers 3.9,
+    # which is the Python that ships with macOS developer tools.
+    container: python:${{ matrix.python }}-slim
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.12"]   # 3.9 = the Python that ships with macOS developer tools
+        python: ["3.9", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: App engine tests
-        run: node tests/engine.test.js
+      - uses: actions/checkout@v5
 
       - name: Bot tests
         run: python -I tests/test_bots.py
@@ -42,6 +36,18 @@ jobs:
           bash -n OPCG-Phone.command
           bash -n deploy/deploy.sh
 
+  app:
+    name: App engine tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Engine tests
+        run: node tests/engine.test.js
+
       - name: App scripts parse
         run: |
           node --check app/app.js
@@ -51,7 +57,7 @@ jobs:
     name: Container builds and keeps strangers out
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build image
         run: docker build -t opcg .
