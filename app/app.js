@@ -12,7 +12,7 @@
   const PRICES = window.OPCG_PRICES || { prices: {} };
   const DEFAULT_RATE = 0.049; // JPY -> HKD (mid-Aug 2026); the price bot refreshes it
   const byId = {};
-  for (const c of CARDS) byId[c.id] = c;
+  for (const c of CARDS) { c.rarity = E.normRarity(c.rarity); byId[c.id] = c; }
   // What the last update found (shown for 14 days).
   const LAST_UPDATE = (window.OPCG_CARDS && window.OPCG_CARDS.lastUpdate) || {};
   const UPDATE_RECENT = LAST_UPDATE.at && (Date.now() - new Date(LAST_UPDATE.at).getTime()) < 14 * 864e5;
@@ -219,6 +219,11 @@
     const p = PRICES.prices[id];
     return (p && p.url) || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
   }
+  /** Badge after a card's rarity in lists: 異圖 / 再版. SP cards need none: their rarity already reads SP. */
+  function altBadge(c) {
+    const v = E.variantLabel(c);
+    return v && v !== c.rarity ? ` <span class="badge">${v}</span>` : '';
+  }
   function cardName(id) { const c = byId[id] || byId[E.baseId(id)]; return c ? c.name : ''; }
   function imgSrc(id) {
     const c = byId[id] || byId[E.baseId(id)];
@@ -341,7 +346,7 @@
       <tr><td><code>紅</code> <code>red</code></td><td>顏色</td></tr>
       <tr><td><code>領航</code> <code>事件</code></td><td>類別</td></tr>
       <tr><td><code>有</code> <code>未有</code></td><td>已擁有／未擁有</td></tr>
-      <tr><td><code>平行</code></td><td>只顯示平行版</td></tr>
+      <tr><td><code>異圖</code></td><td>只顯示異圖、SP 及再版</td></tr>
       <tr><td><code>新</code></td><td>最近更新的新卡</td></tr>
       <tr><td>其他字詞</td><td>名稱、卡號、特徵、效果</td></tr>
     </table>例如：<code>路飛 OP08 c5 p6000</code>`;
@@ -466,7 +471,7 @@
     const p = (price || pricer())(c.id);
     const r = c.id === E.baseId(c.id) ? reserved[c.id] || 0 : 0;
     return `<div class="tile${n ? ' has' : ''}" data-id="${esc(c.id)}">
-      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${n}</span>` : ''}${c.id !== E.baseId(c.id) ? '<span class="alt-badge">平行</span>' : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
+      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${n}</span>` : ''}${E.variantLabel(c) ? `<span class="alt-badge">${E.variantLabel(c)}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
       <div class="meta">${esc(c.id)} <span class="muted">${esc(c.rarity || '')}</span> ${dots(c)}</div>
       <div class="meta name" title="${esc(c.name)}">${esc(c.name || (c.unknown ? '（卡表沒有資料）' : ''))}</div>
       <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${Math.max(0, n - r)}` : ''}</div>
@@ -497,7 +502,12 @@
     const isLeader = E.normCategory(c.category) === 'LEADER';
     const tile = (k, v, extra) => v || v === 0 ? `<div class="stat"><span>${k}</span><b>${extra || esc(v)}</b></div>` : '';
     const setCode = E.setOf(id);
-    const label = v => v === base ? '普通' : '平行 ' + v.split('_')[1];
+    // 普通 / 異圖 1 / 異圖 2 / SP / 再版: numbered only when one kind appears more than once.
+    const kindOf = v => v === base ? '普通' : E.variantLabel(byId[v] || { id: v });
+    const label = v => {
+      const same = vars.filter(x => kindOf(x) === kindOf(v));
+      return same.length > 1 ? `${kindOf(v)} ${same.indexOf(v) + 1}` : kindOf(v);
+    };
     $('#modal-body').innerHTML = `<div class="cd">
       <div class="cd-left">
         <div class="cd-img">${imgSrc(id) ? `<img referrerpolicy="no-referrer" src="${esc(imgSrc(id))}" alt="${esc((c.name || '') + ' ' + id)}">` : `<span class="ph">${esc(id)}</span>`}</div>
@@ -514,7 +524,7 @@
           ${tile('顏色', c.color, c.color ? dots(c) + ' ' + esc(c.color) : '')}${tile('屬性', c.attribute)}${tile('擴張記號', c.block)}
         </div>
         <div class="box">
-          <div class="box-head"><span>價格${id === base ? '' : '（此平行版）'}</span>
+          <div class="box-head"><span>價格${id === base ? '' : `（此${esc(kindOf(id))}）`}</span>
             <span>${p ? `<b class="big price">${hk(p.hkd)}</b> ${changeHtml(p.change)}` : '<span class="muted">未有價格</span>'}</span></div>
           ${p ? `<div class="muted small">${p.source === 'manual' ? `手動價 · ${esc(p.at || '')}` : `悠々亭 ¥${Number(p.jpy).toLocaleString()} × ${rate()}${Number(settings().factor) !== 1 ? ' × ' + esc(settings().factor) : ''} · ${esc(p.at || '')}${p.stock === 0 ? ' · 缺貨' : ''}`}</div>
             ${sparkline(p.history)}` : ''}
@@ -705,7 +715,7 @@
     if (!names.includes(sv.group)) sv.group = names[0];
     el.innerHTML = `
       <div class="subtabs">${names.map(g => `<button data-group="${esc(g)}" class="${g === sv.group ? 'on' : ''}">${esc(g)}</button>`).join('')}</div>
-      <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同平行版一併計算</label>
+      <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同異圖及 SP 一併計算</label>
       ${names.filter(g => g === sv.group).map(g => {
         const prog = groups[g].map(code => E.setProgress(CARDS, state.owned, code, sv.parallels)).filter(x => x.total);
         const tot = prog.reduce((t, x) => t + x.total, 0), have = prog.reduce((t, x) => t + x.have, 0);
@@ -732,7 +742,7 @@
     else list.sort(cmp);
     return list;
   }
-  const RAR_ORDER = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'SP', 'TR', 'P', '平行'];
+  const RAR_ORDER = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'SP', 'TR', 'P', '異圖', '再版'];
   function setSummaryHtml() {
     const x = E.setProgress(CARDS, state.owned, sv.set, sv.parallels);
     const rars = Object.keys(x.byRarity).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
@@ -747,10 +757,9 @@
   }
   function batchRowHtml(c) {
     const n = ownedOf(c.id);
-    const alt = c.id !== E.baseId(c.id);
     return `<div class="brow${n ? ' has' : ''}" data-id="${esc(c.id)}">
       <div class="thumb" data-detail="${esc(c.id)}">${imgTag(c.id)}</div>
-      <label class="grow" for="b-${esc(c.id)}"><b>${esc(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${alt ? ' <span class="badge">平行</span>' : ''}
+      <label class="grow" for="b-${esc(c.id)}"><b>${esc(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${altBadge(c)}
         <span class="bname">${esc(c.name || '')}</span></label>
       <input id="b-${esc(c.id)}" class="bnum" data-bid="${esc(c.id)}" value="${n || ''}" placeholder="0"
         inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="3" aria-label="${esc(c.id)} 數量">
@@ -775,7 +784,7 @@
       <input id="bk-n" type="number" min="0" max="99" step="1" value="${esc(sv.bulkN)}" inputmode="numeric" aria-label="張數" style="width:70px"> 張
       <button class="small primary" id="bk-apply">套用</button>
       ${undo ? `<button class="small" id="bk-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
-      ${help('<b>開箱後點算普通卡（C）</b><br>1. 選「C」、「每款加」及你估計每款的張數，按「套用」。<br>2. 在上方稀有度選「C」，切換到「批量輸入」，逐張修正多出或不足的。<br>只會改動此系列的普通版，不影響平行版。按「撤銷」可還原上一次批量設定。', '批量設定說明')}
+      ${help('<b>開箱後點算普通卡（C）</b><br>1. 選「C」、「每款加」及你估計每款的張數，按「套用」。<br>2. 在上方稀有度選「C」，切換到「批量輸入」，逐張修正多出或不足的。<br>只會改動此系列的普通版，不影響異圖及 SP。按「撤銷」可還原上一次批量設定。', '批量設定說明')}
     </div>`;
   }
   async function applyBulk() {
@@ -801,7 +810,7 @@
         <div class="seg" role="group" aria-label="顯示方式">
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
-        <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括平行版</label>
+        <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括異圖及 SP</label>
         <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setRarities().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option></select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
@@ -888,7 +897,7 @@
     el.innerHTML = `
       <div class="cols">
         <div class="panel quick">
-          <h2>開箱快速輸入 ${help('輸入卡號後按 Enter，即加一張：<br><code>OP08-001</code>、<code>08-001</code>，或只輸入 <code>1</code>（使用預設系列）。<br>平行版：<code>001p1</code>。輸入錯了可在下方按「撤銷」。', '開箱說明')}</h2>
+          <h2>開箱快速輸入 ${help('輸入卡號後按 Enter，即加一張：<br><code>OP08-001</code>、<code>08-001</code>，或只輸入 <code>1</code>（使用預設系列）。<br>異圖或 SP：<code>001p1</code>。輸入錯了可在下方按「撤銷」。', '開箱說明')}</h2>
           <div class="toolbar">
             <label>預設系列 <select id="q-set"><option value="">（無）</option>${SETS.map(s => `<option${s === set ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
           </div>
@@ -897,7 +906,7 @@
           <ul class="log" id="q-log"></ul>
         </div>
         <div class="panel">
-          <h2>一次加入多張 ${help('每行一款：<code>OP08-001 x2</code>、<code>3 OP09-045</code>、<code>OP08-118_p1</code>。<br>平行版／異圖會分開記錄。', '格式說明')}</h2>
+          <h2>一次加入多張 ${help('每行一款：<code>OP08-001 x2</code>、<code>3 OP09-045</code>、<code>OP08-118_p1</code>。<br>異圖及 SP 會分開記錄。', '格式說明')}</h2>
           <textarea id="bulk" placeholder="OP08-001 x2&#10;OP08-045 x3"></textarea>
           <div class="actions" style="margin-top:8px"><button class="primary" id="bulk-add">加入卡庫</button><button id="bulk-sub">從卡庫扣除</button></div>
         </div>
@@ -1372,7 +1381,7 @@
     $('#vf-list').innerHTML = rows.slice(0, vf.limit).map(r => `<div class="vrow">
       <div class="thumb" data-detail="${esc(r.id)}">${imgTag(r.id)}</div>
       <div class="grow">
-        <div><b>${esc(r.id)}</b> <span class="muted">${esc(r.c.rarity || '')}</span> ${esc(r.c.name || '')}${r.id !== E.baseId(r.id) ? ' <span class="badge">平行</span>' : ''}</div>
+        <div><b>${esc(r.id)}</b> <span class="muted">${esc(r.c.rarity || '')}</span> ${esc(r.c.name || '')}${altBadge(r.c)}</div>
         <div class="muted" style="font-size:12px">${r.p.source === 'manual' ? `手動（${esc(r.p.at || '')}）<button class="small" data-clear="${esc(r.id)}">改回自動價格</button>` : `悠々亭 ¥${Number(r.p.jpy).toLocaleString()}${r.p.stock === 0 ? ' · 缺貨' : ''} · ${esc(r.p.at || '')}`}
           · <a href="${esc(shopUrl(r.id))}" target="_blank" rel="noopener">悠々亭</a>${r.reserved ? ` · 預留 ${r.reserved}` : ''}</div>
       </div>
@@ -1469,8 +1478,8 @@
         </div>
         <div class="panel" id="auto-panel"><h2>更新方式</h2>${autoPanelHtml()}</div>
         <div class="panel"><h2>設定</h2>
-          <label><input type="checkbox" id="set-par"${settings().includeParallels ? ' checked' : ''}> 計算牌組時計入平行版</label>
-          ${help('勾選後，計算牌組是否齊卡時會一併計入平行版／異圖。售出牌組時會先扣除普通版。', '平行版說明')}
+          <label><input type="checkbox" id="set-par"${settings().includeParallels ? ' checked' : ''}> 計算牌組時計入異圖及 SP</label>
+          ${help('勾選後，計算牌組是否齊卡時會一併計入異圖及 SP。售出牌組時會先扣除普通版。', '異圖說明')}
           <h3 style="margin-top:16px">價格 ${help('自動價格 = 悠々亭日版售價（JPY）× 匯率 × 係數。<br>港版／亞洲中文版的行情通常與日版不同，可用係數調整（例如 0.8）。<br>手動價格永遠優先。<br>匯率留空即使用 BOT 最近取得的匯率（' + esc(PRICES.jpyToHkd || DEFAULT_RATE + '，預設值') + '）。', '價格計算說明')}</h3>
           <div class="toolbar">
             <label>1 JPY = <input id="set-rate" type="number" step="0.0001" min="0" style="width:100px" placeholder="${esc(PRICES.jpyToHkd || DEFAULT_RATE)}"> HKD</label>

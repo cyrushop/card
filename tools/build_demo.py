@@ -53,7 +53,7 @@ def card_svg(cid, colors, rarity, cost, power, alt):
            f'{top}<text x="282" y="50" font-size="26" font-weight="800" text-anchor="end" fill="#fff">{power or ""}</text>'
            f'<rect x="16" y="318" width="268" height="84" rx="10" fill="#000" opacity=".35"/>'
            f'<text x="150" y="356" font-size="27" font-weight="700" text-anchor="middle" fill="#fff" font-family="sans-serif">{cid.split("_")[0]}</text>'
-           f'<text x="150" y="388" font-size="17" text-anchor="middle" fill="#fff" opacity=".85" font-family="sans-serif">{rarity}{" · 平行" if alt else ""} · SAMPLE</text>'
+           f'<text x="150" y="388" font-size="17" text-anchor="middle" fill="#fff" opacity=".85" font-family="sans-serif">{rarity}{" · 異圖" if alt else ""} · SAMPLE</text>'
            f'{gold}</svg>')
     return "data:image/svg+xml," + quote(svg)
 
