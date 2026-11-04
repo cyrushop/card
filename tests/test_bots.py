@@ -303,6 +303,44 @@ class CardUpdate(unittest.TestCase):
         finally:
             scrape_cards.net.get, scrape_cards.DATA = saved_get, saved_data
 
+    def test_stopped_download_leaves_no_cut_off_image(self):
+        import builtins, tempfile
+        saved_get, saved_data = scrape_cards.net.get, scrape_cards.DATA
+        real_open = builtins.open
+
+        class Cut:
+            """A file whose write stops halfway, as when the computer sleeps mid-download."""
+            def __init__(self, f): self.f = f
+            def __enter__(self): return self
+            def __exit__(self, *a): self.f.close()
+            def write(self, b):
+                self.f.write(b[: len(b) // 2])
+                raise KeyboardInterrupt
+
+        def cutting_open(path, mode="r", *a, **k):
+            f = real_open(path, mode, *a, **k)
+            return Cut(f) if "b" in mode and "w" in mode else f
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                scrape_cards.DATA = tmp
+                pages = {"": '<select name="series"><option value="1">【OP-01】</option></select>',
+                         "1": self.card("OP01-001", "OP01-001.png?1")}
+                scrape_cards.open = cutting_open
+                try:
+                    with self.assertRaises(KeyboardInterrupt):
+                        self.run_bot(pages)
+                finally:
+                    del scrape_cards.open
+                img_dir = os.path.join(tmp, "images")
+                self.assertFalse([n for n in os.listdir(img_dir) if n.endswith(".png")])
+                # The next run downloads it again, whole.
+                data, imgs = self.run_bot(pages)
+                self.assertEqual(len(imgs), 1)
+                with real_open(os.path.join(img_dir, "OP01-001.png"), "rb") as f:
+                    self.assertEqual(f.read(), b"PNG:" + imgs[0].encode())
+        finally:
+            scrape_cards.net.get, scrape_cards.DATA = saved_get, saved_data
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
