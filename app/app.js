@@ -723,17 +723,23 @@
     // Every category on one page, in the usual order: 補充包, 特殊補充包, 高級補充包, 起始牌組, 推廣卡, 其他.
     const order = E.SET_GROUPS.map(x => x[1]).concat('其他');
     const names = Object.keys(groups).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    // The jump bar stays under the sticky top bar, so it needs that bar's height.
+    const top = document.querySelector('.top');
+    if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     el.innerHTML = `
+      <div class="jumpbar" role="navigation" aria-label="跳到分類">${names.map((g, i) => `<button class="chip link" data-jump="grp-${i}">${esc(g)} <span class="muted">${groups[g].length}</span></button>`).join('')}</div>
       <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同異圖及 SP 一併計算</label>
-      ${names.map(g => {
+      ${names.map((g, gi) => {
         const prog = groups[g].map(code => E.setProgress(CARDS, state.owned, code, sv.parallels)).filter(x => x.total);
         const tot = prog.reduce((t, x) => t + x.total, 0), have = prog.reduce((t, x) => t + x.have, 0);
-        return `<div class="panel"><div class="group-head">${ring(tot ? have / tot : 0, 46, Math.round(tot ? have / tot * 100 : 0) + '%')}<h2>${esc(g)}</h2>
+        return `<div class="panel grp-panel" id="grp-${gi}"><div class="group-head">${ring(tot ? have / tot : 0, 46, Math.round(tot ? have / tot * 100 : 0) + '%')}<h2>${esc(g)}</h2>
           <span class="muted">${have}/${tot} 款</span></div>
           <div class="setgrid">${prog.map(x => `<button class="setdot" data-set="${esc(x.code)}" title="${esc(SERIES_LABEL[x.code] || x.code)}">${NEW_SERIES.has(x.code) ? '<span class="new-badge">新</span>' : ''}
             ${ring(x.pct, 58, /^X\d/.test(x.code) ? setName(x.code).slice(0, 4) : x.code.replace(/^(OP|EB|PRB|ST)/, '$1 '))}<small>${x.have}/${x.total}</small></button>`).join('')}</div></div>`;
       }).join('')}`;
     el.onclick = e => {
+      const j = e.target.closest('[data-jump]');
+      if (j) { const p = document.getElementById(j.dataset.jump); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
       const st = e.target.closest('[data-set]');
       if (st) { sv.set = st.dataset.set; renderSets(); window.scrollTo(0, 0); }
     };
