@@ -219,7 +219,7 @@
     const p = PRICES.prices[id];
     return (p && p.url) || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
   }
-  /** Badge after a card's rarity in lists: 異圖 / 再版. SP cards need none: their rarity already reads SP. */
+  /** Badge after a card's rarity in lists: 異圖 / 重印. SP cards need none: their rarity already reads SP. */
   function altBadge(c) {
     const v = E.variantLabel(c);
     return v && v !== c.rarity ? ` <span class="badge">${v}</span>` : '';
@@ -346,7 +346,7 @@
       <tr><td><code>紅</code> <code>red</code></td><td>顏色</td></tr>
       <tr><td><code>領航</code> <code>事件</code></td><td>類別</td></tr>
       <tr><td><code>有</code> <code>未有</code></td><td>已擁有／未擁有</td></tr>
-      <tr><td><code>異圖</code></td><td>只顯示異圖、SP 及再版</td></tr>
+      <tr><td><code>異圖</code></td><td>只顯示異圖、SP 及重印</td></tr>
       <tr><td><code>新</code></td><td>最近更新的新卡</td></tr>
       <tr><td>其他字詞</td><td>名稱、卡號、特徵、效果</td></tr>
     </table>例如：<code>路飛 OP08 c5 p6000</code>`;
@@ -502,7 +502,7 @@
     const isLeader = E.normCategory(c.category) === 'LEADER';
     const tile = (k, v, extra) => v || v === 0 ? `<div class="stat"><span>${k}</span><b>${extra || esc(v)}</b></div>` : '';
     const setCode = E.setOf(id);
-    // 普通 / 異圖 1 / 異圖 2 / SP / 再版: numbered only when one kind appears more than once.
+    // 普通 / 異圖 1 / 異圖 2 / SP / 重印: numbered only when one kind appears more than once.
     const kindOf = v => v === base ? '普通' : E.variantLabel(byId[v] || { id: v });
     const label = v => {
       const same = vars.filter(x => kindOf(x) === kindOf(v));
@@ -733,8 +733,12 @@
     el.onchange = e => { if (e.target.id === 'sv-par') { sv.parallels = e.target.checked; renderSets(); } };
   }
   function setCards() {
-    let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)));
-    if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
+    // Choosing SP / 異圖 / 重印 shows those versions even when "包括異圖及 SP" is off.
+    const pickVersion = VERSION_KINDS.includes(sv.rarity);
+    let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || pickVersion || c.id === E.baseId(c.id)));
+    if (sv.rarity === 'SP') list = list.filter(c => c.rarity === 'SP');
+    else if (pickVersion) list = list.filter(c => E.variantLabel(c) === sv.rarity);
+    else if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
     if (sv.show === 'have') list = list.filter(c => ownedOf(c.id));
     if (sv.show === 'none') list = list.filter(c => !ownedOf(c.id));
     const cmp = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -742,7 +746,8 @@
     else list.sort(cmp);
     return list;
   }
-  const RAR_ORDER = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'SP', 'TR', 'P', '異圖', '再版'];
+  const RAR_ORDER = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'SP', 'TR', 'P', '異圖', '重印'];
+  const VERSION_KINDS = ['SP', '異圖', '重印'];
   function setSummaryHtml() {
     const x = E.setProgress(CARDS, state.owned, sv.set, sv.parallels);
     const rars = Object.keys(x.byRarity).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
@@ -769,6 +774,12 @@
   function setRarities() {
     const have = new Set(CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id)).map(c => c.rarity || '').filter(Boolean));
     return Array.from(have).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+  }
+  /** For the series filter: normal rarities, then SP / 異圖 / 重印 when the series has such versions. */
+  function setFilterOptions() {
+    const kinds = new Set(CARDS.filter(c => E.inSet(c, sv.set)).map(c => E.variantLabel(c)).filter(Boolean));
+    const out = setRarities().concat(VERSION_KINDS.filter(k => kinds.has(k)));
+    return Array.from(new Set(out)).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
   }
   function bulkIds(rarity) {
     return CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id) && (c.rarity || '') === rarity).map(c => c.id);
@@ -811,7 +822,7 @@
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
         <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括異圖及 SP</label>
-        <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setRarities().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
+        <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setFilterOptions().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option></select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>

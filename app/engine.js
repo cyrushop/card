@@ -24,12 +24,12 @@
 
   /**
    * Short name for a card's version: '' for the normal card, 'SP' for an SP card,
-   * '再版' for a same-picture reprint (_r1), '異圖' for any other alternate art (_p1).
+   * '重印' for a same-picture reprint (_r1), '異圖' for any other alternate art (_p1).
    */
   function variantLabel(card) {
     const id = typeof card === 'string' ? card : (card || {}).id;
     if (id === baseId(id)) return '';
-    if (/_r\d+$/i.test(id)) return '再版';
+    if (/_r\d+$/i.test(id)) return '重印';
     return normRarity((card || {}).rarity) === 'SP' ? 'SP' : '異圖';
   }
 
@@ -367,7 +367,7 @@
    *   p6000, p5000-7000           power        k1000         counter
    *   SR / SEC / L / UC ...       rarity       紅 / red ...  colour
    *   leader / 領航 / event ...   category     有 / 未有     owned or not
-   *   異圖 / 平行 / alt           other versions (異圖, SP, 再版)   anything else: name, number, type or effect text
+   *   異圖 / 平行 / alt           other versions (異圖, SP, 重印)   anything else: name, number, type or effect text
    */
   function parseQuery(q) {
     const out = { text: [], sets: [], rarities: [], colors: [], cats: [], cost: null, power: null, counter: null, owned: null, alt: null, fresh: null };
