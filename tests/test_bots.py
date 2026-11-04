@@ -228,12 +228,12 @@ YUYU_LIVE = """
  <span class="d-block">OP11-022</span><h4>しらほし(パラレル)</h4><strong class="d-block text-end">4,980 円</strong><label>在庫 : 2 点</label></div></div>
 """
 OFFICIAL_EB05 = [  # from the official card list: ids that belong to series EB05
-    {"id": "EB05-014", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
-    {"id": "EB05-014_p1", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
-    {"id": "EB05-014_p2", "baseId": "EB05-014", "series": [{"code": "EB05"}]},
-    {"id": "OP11-022_p2", "baseId": "OP11-022", "series": [{"code": "EB05"}]},
-    {"id": "OP11-022", "baseId": "OP11-022", "series": [{"code": "OP11"}]},
-    {"id": "OP11-022_p1", "baseId": "OP11-022", "series": [{"code": "OP11"}]},
+    {"id": "EB05-014", "baseId": "EB05-014", "rarity": "SR", "series": [{"code": "EB05"}]},
+    {"id": "EB05-014_p1", "baseId": "EB05-014", "rarity": "SR", "series": [{"code": "EB05"}]},
+    {"id": "EB05-014_p2", "baseId": "EB05-014", "rarity": "SR", "series": [{"code": "EB05"}]},
+    {"id": "OP11-022_p2", "baseId": "OP11-022", "rarity": "L", "series": [{"code": "EB05"}]},
+    {"id": "OP11-022", "baseId": "OP11-022", "rarity": "L", "series": [{"code": "OP11"}]},
+    {"id": "OP11-022_p1", "baseId": "OP11-022", "rarity": "L", "series": [{"code": "OP11"}]},
 ]
 
 
@@ -245,12 +245,46 @@ class PriceBotLiveLayout(unittest.TestCase):
     def test_matches_official_ids_including_reprints(self):
         rows = scrape_prices.parse_shop(YUYU_LIVE, "https://yuyu-tei.jp/sell/opc/s/eb05")
         official = scrape_prices.official_versions(OFFICIAL_EB05, "EB05")
-        self.assertEqual(official["OP11-022"], ["OP11-022_p2"])  # only the EB05 reprint, not OP11's own cards
+        self.assertEqual(official["OP11-022"], [("OP11-022_p2", "L")])  # only the EB05 reprint, not OP11's own cards
         ids = scrape_prices.map_ids(rows, "EB05", official)
         self.assertEqual({k: v["jpy"] for k, v in ids.items()},
                          {"EB05-014": 280, "EB05-014_p1": 1480, "EB05-014_p2": 79800, "OP11-022_p2": 4980})
         # Without the official list the reprint would be guessed as OP11-022_p1, which is a different card.
         self.assertIn("OP11-022_p1", scrape_prices.map_ids(rows, "EB05"))
+
+
+    def box(self, no, rarity, name, jpy):
+        return (f'<div class="card-product"><div class="starbtn"><img alt="Star"/></div><img alt="{no} {rarity} {name}"/>'
+                f'<span>{no}</span><h4>{name}</h4><strong>{jpy:,} 円</strong></div>')
+
+    def test_sp_cards_kept_apart_from_other_parallels(self):
+        # Live case OP09-004 (Shanks): official _p1/_p2 are SR parallels and _p3 is an SP card.
+        # By price alone the SP card (¥14,800) landed on _p1.
+        html = (self.box("OP09-004", "SR", "シャンクス", 120) + self.box("OP09-004", "P-SR", "シャンクス(パラレル)", 22800)
+                + self.box("OP09-004", "SP", "シャンクス(パラレル)", 14800)
+                + self.box("OP09-004", "P-SR", "シャンクス(パラレル)(スーパーパラレル)", 148000))
+        official = scrape_prices.official_versions([
+            {"id": "OP09-004", "baseId": "OP09-004", "rarity": "SR", "series": [{"code": "OP09"}]},
+            {"id": "OP09-004_p1", "baseId": "OP09-004", "rarity": "SR", "series": [{"code": "OP09"}]},
+            {"id": "OP09-004_p2", "baseId": "OP09-004", "rarity": "SR", "series": [{"code": "OP09"}]},
+            {"id": "OP09-004_p3", "baseId": "OP09-004", "rarity": "SP卡", "series": [{"code": "OP09"}]},
+        ], "OP09")
+        ids = scrape_prices.map_ids(scrape_prices.parse_shop(html, "https://yuyu-tei.jp/sell/opc/s/op09"), "OP09", official)
+        self.assertEqual({k: v["jpy"] for k, v in ids.items()},
+                         {"OP09-004": 120, "OP09-004_p1": 22800, "OP09-004_p2": 148000, "OP09-004_p3": 14800})
+
+    def test_same_picture_reprint_and_no_wrong_slot(self):
+        # Live case: Pudding OP06-047 reprinted in PRB02 is officially OP06-047_r1 (R) plus an SP card _p3.
+        html = (self.box("OP06-047", "R", "シャーロット・プリン", 300)
+                + self.box("OP06-047", "SP", "シャーロット・プリン(パラレル)(PRB2)", 5980)
+                + self.box("OP06-047", "P-R", "シャーロット・プリン(パラレル)", 900))  # no official P-R slot in PRB02
+        official = scrape_prices.official_versions([
+            {"id": "OP06-047", "baseId": "OP06-047", "rarity": "R", "series": [{"code": "OP06"}]},
+            {"id": "OP06-047_r1", "baseId": "OP06-047", "rarity": "R", "series": [{"code": "PRB02"}]},
+            {"id": "OP06-047_p3", "baseId": "OP06-047", "rarity": "SP卡", "series": [{"code": "PRB02"}]},
+        ], "PRB02")
+        ids = scrape_prices.map_ids(scrape_prices.parse_shop(html, "https://yuyu-tei.jp/sell/opc/s/prb02"), "PRB02", official)
+        self.assertEqual({k: v["jpy"] for k, v in ids.items()}, {"OP06-047_r1": 300, "OP06-047_p3": 5980})
 
 
 class CardUpdate(unittest.TestCase):
