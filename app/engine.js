@@ -484,11 +484,22 @@
     return String(id || '').split('-')[0].toUpperCase();
   }
 
+  /**
+   * Code of an official series. A few have none on the site (推廣卡, 家庭牌組套裝, 限定商品收錄卡牌):
+   * 推廣卡 joins the P cards, the others get 'X' + the site's series number so they stay apart.
+   */
+  function seriesCode(s) {
+    s = s || {};
+    if (s.code) return s.code;
+    if (/推廣|プロモ|promo/i.test(s.label || '')) return 'P';
+    return s.value ? 'X' + s.value : '';
+  }
+
   const api = {
-    normId, baseId, normRarity, variantLabel, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
+    normId, baseId, normRarity, variantLabel, seriesCode, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;

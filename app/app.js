@@ -12,7 +12,12 @@
   const PRICES = window.OPCG_PRICES || { prices: {} };
   const DEFAULT_RATE = 0.049; // JPY -> HKD (mid-Aug 2026); the price bot refreshes it
   const byId = {};
-  for (const c of CARDS) { c.rarity = E.normRarity(c.rarity); byId[c.id] = c; }
+  for (const c of CARDS) {
+    c.rarity = E.normRarity(c.rarity);
+    for (const s of c.series || []) if (s) s.code = E.seriesCode(s);
+    byId[c.id] = c;
+  }
+  for (const s of (window.OPCG_CARDS && window.OPCG_CARDS.series) || []) if (s) s.code = E.seriesCode(s);
   // What the last update found (shown for 14 days).
   const LAST_UPDATE = (window.OPCG_CARDS && window.OPCG_CARDS.lastUpdate) || {};
   const UPDATE_RECENT = LAST_UPDATE.at && (Date.now() - new Date(LAST_UPDATE.at).getTime()) < 14 * 864e5;
@@ -253,6 +258,10 @@
     return `<span class="dots">${E.cardColors(card || {}).map(c => `<i class="dot" title="${esc(c)}" style="background:var(--${COLOR_HEX[c] || 'muted'})"></i>`).join('')}</span>`;
   }
   /** Progress ring (SVG). */
+  /** Short name for a series: its code (OP08), or for the few without one, its name (家庭牌組套裝). */
+  function setName(code) {
+    return /^X\d/.test(code) ? String(SERIES_LABEL[code] || code).replace(/【.*?】/g, '').trim() : code;
+  }
   function ring(pct, size, label) {
     const r = size / 2 - 3, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, pct || 0));
     return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-label="${Math.round(v * 100)}%">
@@ -693,7 +702,7 @@
   }
 
   // =============================================================== SETS
-  const sv = { group: '', set: '', parallels: false, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
+  const sv = { set: '', parallels: false, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
     bulkRarity: 'C', bulkMode: 'add', bulkN: 1 };
   let lastBulk = null; // { set, prev, label } for undo
   try { sv.mode = localStorage.getItem('opcg-setmode') || 'grid'; } catch (e) { /* ignore */ }
@@ -711,22 +720,20 @@
       if (!E.setProgress(CARDS, state.owned, code, sv.parallels).total) continue;
       (groups[E.setGroup(code)] = groups[E.setGroup(code)] || []).push(code);
     }
-    const names = Object.keys(groups);
-    if (!names.includes(sv.group)) sv.group = names[0];
+    // Every category on one page, in the usual order: 補充包, 特殊補充包, 高級補充包, 起始牌組, 推廣卡, 其他.
+    const order = E.SET_GROUPS.map(x => x[1]).concat('其他');
+    const names = Object.keys(groups).sort((a, b) => order.indexOf(a) - order.indexOf(b));
     el.innerHTML = `
-      <div class="subtabs">${names.map(g => `<button data-group="${esc(g)}" class="${g === sv.group ? 'on' : ''}">${esc(g)}</button>`).join('')}</div>
       <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同異圖及 SP 一併計算</label>
-      ${names.filter(g => g === sv.group).map(g => {
+      ${names.map(g => {
         const prog = groups[g].map(code => E.setProgress(CARDS, state.owned, code, sv.parallels)).filter(x => x.total);
         const tot = prog.reduce((t, x) => t + x.total, 0), have = prog.reduce((t, x) => t + x.have, 0);
         return `<div class="panel"><div class="group-head">${ring(tot ? have / tot : 0, 46, Math.round(tot ? have / tot * 100 : 0) + '%')}<h2>${esc(g)}</h2>
           <span class="muted">${have}/${tot} 款</span></div>
           <div class="setgrid">${prog.map(x => `<button class="setdot" data-set="${esc(x.code)}" title="${esc(SERIES_LABEL[x.code] || x.code)}">${NEW_SERIES.has(x.code) ? '<span class="new-badge">新</span>' : ''}
-            ${ring(x.pct, 58, x.code.replace(/^(OP|EB|PRB|ST)/, '$1 '))}<small>${x.have}/${x.total}</small></button>`).join('')}</div></div>`;
+            ${ring(x.pct, 58, /^X\d/.test(x.code) ? setName(x.code).slice(0, 4) : x.code.replace(/^(OP|EB|PRB|ST)/, '$1 '))}<small>${x.have}/${x.total}</small></button>`).join('')}</div></div>`;
       }).join('')}`;
     el.onclick = e => {
-      const g = e.target.closest('[data-group]');
-      if (g) { sv.group = g.dataset.group; return renderSets(); }
       const st = e.target.closest('[data-set]');
       if (st) { sv.set = st.dataset.set; renderSets(); window.scrollTo(0, 0); }
     };
@@ -755,7 +762,7 @@
     return `<div class="set-head">
         <button class="back" data-back="1" aria-label="返回">‹</button>
         ${ring(x.pct, 64, Math.round(x.pct * 100) + '%')}
-        <div class="grow"><h2>${esc(sv.set)}</h2><div class="muted">${esc(SERIES_LABEL[sv.set] || E.setGroup(sv.set))}</div>
+        <div class="grow"><h2>${esc(setName(sv.set))}</h2><div class="muted">${esc(SERIES_LABEL[sv.set] || E.setGroup(sv.set))}</div>
           <div class="small">${x.have}/${x.total} 款 · ${x.copies} 張 · 總值 <b class="price">${total(value.total)}</b> ${eyeButton()}</div></div>
       </div>
       <div class="rarity-row">${rars.map(r => `<div class="rar"><b>${x.byRarity[r].have}/${x.byRarity[r].total}</b><span>${esc(r)}</span></div>`).join('')}</div>`;

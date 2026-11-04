@@ -178,9 +178,6 @@ table.list td, table.list th { border-bottom: 1px solid var(--line); padding: 4p
 .ring-bg { fill: none; stroke: var(--bar); stroke-width: 4; }
 .ring-fg { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
 .ring text { fill: var(--ink); font-size: 11px; font-weight: 700; }
-.subtabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
-.subtabs button { border: none; background: none; border-radius: 0; padding: 8px 12px; white-space: nowrap; border-bottom: 2px solid transparent; }
-.subtabs button.on { border-bottom-color: var(--accent); font-weight: 700; }
 .group-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .group-head h2 { margin: 0; flex: 1; }
 .setgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px 6px; }
