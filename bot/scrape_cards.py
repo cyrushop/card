@@ -183,8 +183,12 @@ def download_images(cards, delay):
             continue
         try:
             data = net.get(c["image"], delay=delay, binary=True, referer=BASE)
-            with open(path, "wb") as f:
+            # Write to a side file and rename it into place, so a run that is stopped halfway
+            # (computer asleep, window closed) never leaves a cut-off picture that later runs keep.
+            part = path + ".part"
+            with open(part, "wb") as f:
                 f.write(data)
+            os.replace(part, path)
             manifest[c["id"]] = c["image"]
             changed += have
             new += not have
