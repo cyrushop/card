@@ -16,6 +16,23 @@
     return String(id || '').split('_')[0];
   }
 
+  /** Rarity as the app shows it: the official list writes SP cards as "SP卡". */
+  function normRarity(r) {
+    const s = String(r || '').trim();
+    return /^SP/i.test(s) ? 'SP' : s;
+  }
+
+  /**
+   * Short name for a card's version: '' for the normal card, 'SP' for an SP card,
+   * '再版' for a same-picture reprint (_r1), '異圖' for any other alternate art (_p1).
+   */
+  function variantLabel(card) {
+    const id = typeof card === 'string' ? card : (card || {}).id;
+    if (id === baseId(id)) return '';
+    if (/_r\d+$/i.test(id)) return '再版';
+    return normRarity((card || {}).rarity) === 'SP' ? 'SP' : '異圖';
+  }
+
   /** Card id from the quick-add box: "OP08-001", "08-001" (OP set), "001" or "1" with a default set, "001p1". */
   function quickId(input, defaultSet) {
     let s = String(input || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -350,7 +367,7 @@
    *   p6000, p5000-7000           power        k1000         counter
    *   SR / SEC / L / UC ...       rarity       紅 / red ...  colour
    *   leader / 領航 / event ...   category     有 / 未有     owned or not
-   *   平行 / alt                  parallels    anything else name, number, type or effect text
+   *   異圖 / 平行 / alt           other versions (異圖, SP, 再版)   anything else: name, number, type or effect text
    */
   function parseQuery(q) {
     const out = { text: [], sets: [], rarities: [], colors: [], cats: [], cost: null, power: null, counter: null, owned: null, alt: null, fresh: null };
@@ -370,7 +387,7 @@
       else if (CAT_WORDS[low]) out.cats.push(CAT_WORDS[low]);
       else if (['有', 'have', 'owned'].includes(low)) out.owned = true;
       else if (['未有', 'missing', '!have', 'need'].includes(low)) out.owned = false;
-      else if (['平行', 'alt', 'parallel'].includes(low)) out.alt = true;
+      else if (['異圖', '异图', '平行', 'alt', 'parallel'].includes(low)) out.alt = true;
       else if (['新', 'new'].includes(low)) out.fresh = true;
       else out.text.push(low);
     }
@@ -382,7 +399,7 @@
   /** Does a card match a parsed query? ownedCount is how many copies the user has of this exact id. */
   function matchCard(card, q, ownedCount) {
     if (q.sets.length && !q.sets.some(s => setOf(card.id) === s || card.set === s || (card.series || []).some(x => x.code === s))) return false;
-    if (q.rarities.length && !q.rarities.includes(String(card.rarity || '').toUpperCase())) return false;
+    if (q.rarities.length && !q.rarities.includes(normRarity(card.rarity).toUpperCase())) return false;
     if (q.colors.length && !q.colors.every(c => cardColors(card).includes(c))) return false;
     if (q.cats.length && !q.cats.includes(normCategory(card.category))) return false;
     if (q.cost && !inRange(card.cost != null ? card.cost : card.life, q.cost)) return false;
@@ -425,7 +442,7 @@
       if (!inSet(c, code)) continue;
       const alt = c.id !== baseId(c.id);
       if (alt && !includeParallels) continue;
-      const key = alt ? '平行' : (c.rarity || '?');
+      const key = alt ? variantLabel(c) : (normRarity(c.rarity) || '?');
       const n = owned[c.id] || 0;
       byRarity[key] = byRarity[key] || { total: 0, have: 0 };
       byRarity[key].total++; total++;
@@ -468,7 +485,7 @@
   }
 
   const api = {
-    normId, baseId, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
+    normId, baseId, normRarity, variantLabel, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
     parseQuery, matchCard, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,

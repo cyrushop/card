@@ -185,7 +185,7 @@ t('set groups and progress', () => {
   assert.deepStrictEqual(a.byRarity, { L: { total: 1, have: 0 }, SR: { total: 2, have: 1 } });
   const b = E.setProgress(cs, owned, 'OP08', true);
   assert.deepStrictEqual([b.total, b.have], [4, 2]);
-  assert.deepStrictEqual(b.byRarity['平行'], { total: 1, have: 1 });
+  assert.deepStrictEqual(b.byRarity['異圖'], { total: 1, have: 1 });
   assert.strictEqual(E.setProgress(cs, owned, 'PRB01', false).total, 1, 'reprint counts in its series');
 });
 
@@ -255,6 +255,22 @@ t('bulk set by rarity, with undo', () => {
   assert.deepStrictEqual(E.undoBulk(b.owned, b.prev), owned);
   assert.deepStrictEqual(E.bulkSet(owned, ['OP10-004'], 'set', '-3').owned['OP10-004'], undefined, 'never below 0');
   assert.deepStrictEqual(owned, { 'OP10-004': 1, 'OP10-005': 3, 'OP10-099': 2 }, 'input untouched');
+});
+
+t('version labels: 異圖, SP and 再版', () => {
+  assert.strictEqual(E.normRarity('SP卡'), 'SP');
+  assert.strictEqual(E.normRarity('SR'), 'SR');
+  assert.strictEqual(E.variantLabel({ id: 'OP09-004', rarity: 'SR' }), '');
+  assert.strictEqual(E.variantLabel({ id: 'OP09-004_p1', rarity: 'SR' }), '異圖');
+  assert.strictEqual(E.variantLabel({ id: 'OP09-004_p3', rarity: 'SP卡' }), 'SP');
+  assert.strictEqual(E.variantLabel({ id: 'OP06-047_r1', rarity: 'R' }), '再版');
+  // The official list writes "SP卡": searching SP must still find it, and 異圖 finds every version.
+  const sp = { id: 'OP09-004_p3', name: 'x', rarity: 'SP卡' };
+  assert.ok(E.matchCard(sp, E.parseQuery('SP'), 0));
+  assert.ok(E.matchCard(sp, E.parseQuery('異圖'), 0));
+  assert.ok(!E.matchCard({ id: 'OP09-004', name: 'x', rarity: 'SR' }, E.parseQuery('異圖'), 0));
+  const prog = E.setProgress([{ id: 'OP09-004', rarity: 'SR' }, { id: 'OP09-004_p1', rarity: 'SR' }, sp], {}, 'OP09', true);
+  assert.deepStrictEqual(Object.keys(prog.byRarity).sort(), ['SP', 'SR', '異圖']);
 });
 
 console.log(`\n${passed} tests passed`);
