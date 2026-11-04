@@ -126,29 +126,44 @@ def parse_shop(html, page_url):
 
 
 def _suffix_no(cid):
-    m = re.search(r"_p(\d+)$", cid)
+    m = re.search(r"_[pr](\d+)$", cid)
     return int(m.group(1)) if m else 0
 
 
+def _is_reprint(cid):
+    """'OP06-047_r1': the same picture reprinted in a later series."""
+    return re.search(r"_r\d+$", cid) is not None
+
+
+def _sp_class(rarity):
+    """'SP' for SP cards (official 'SP卡', Yuyu-tei 'SP'), else 'P' for other parallels."""
+    r = (rarity or "").upper()
+    return "SP" if r.startswith("SP") else "P"
+
+
 def official_versions(cards, code):
-    """Card number -> the official ids of that number in one series, e.g. for EB05:
-    'EB05-055' -> ['EB05-055', 'EB05-055_p1', 'EB05-055_p2', 'EB05-055_p3'] and
-    'OP11-022' -> ['OP11-022_p2'] (a parallel reprint that keeps its old number)."""
+    """Card number -> [(official id, official rarity)] for one series, sorted by suffix, e.g. for EB05:
+    'EB05-055' -> [('EB05-055', 'SR'), ('EB05-055_p1', 'SR'), ...] and
+    'OP11-022' -> [('OP11-022_p2', 'L')] (a parallel reprint that keeps its old number)."""
     out = {}
     for c in cards:
         if c["id"].split("-")[0] == code or any((s or {}).get("code") == code for s in c.get("series", [])):
-            out.setdefault(c["baseId"], []).append(c["id"])
+            out.setdefault(c["baseId"], []).append((c["id"], c.get("rarity") or ""))
     for v in out.values():
-        v.sort(key=_suffix_no)
+        v.sort(key=lambda x: (_is_reprint(x[0]), _suffix_no(x[0])))
     return out
 
 
 def map_ids(rows, page_set, official=None):
     """Give each shop row the id it has in the official card list.
 
-    With `official` (from official_versions): the normal version goes to the base number when the
-    series has it, and the parallels, cheapest first, go to that series' parallel ids in order
-    (_p1 before _p2 ...). Rows beyond what the official list has are left out.
+    With `official` (from official_versions), per card number:
+      * the normal version goes to the base number when the series has it, otherwise to a
+        same-picture reprint id (_r1 ...) of that series;
+      * parallels are matched by kind first: Yuyu-tei 'SP' rows only to official SP cards
+        ('SP卡'), other parallels only to the other official parallel ids; within a kind,
+        cheapest first to the lowest suffix (_p1 before _p2 ...).
+      Rows with no official slot of their kind are left out rather than given to the wrong card.
     Without it: a best guess of base, _p1, _p2 ... in price order."""
     groups = {}
     for r in rows:
@@ -165,10 +180,19 @@ def map_ids(rows, page_set, official=None):
         normal = sorted((r for r in home if not is_parallel(r["rarity"], r["name"])), key=lambda r: r["jpy"])
         para = sorted((r for r in home if is_parallel(r["rarity"], r["name"])), key=lambda r: r["jpy"])
         if known:
-            if normal and no in known:
-                out[no] = dict(normal[0], foreign=False)
-            for cid, r in zip([k for k in known if k != no], para):
-                out[cid] = dict(r, foreign=False)
+            ids = [i for i, _ in known]
+            if normal:
+                if no in ids:
+                    out[no] = dict(normal[0], foreign=False)
+                else:
+                    for cid, r in zip([i for i in ids if _is_reprint(i)], normal):
+                        out[cid] = dict(r, foreign=False)
+            slots = [(i, rar) for i, rar in known if i != no and not _is_reprint(i)]
+            for kind in ("P", "SP"):
+                kind_ids = [i for i, rar in slots if _sp_class(rar) == kind]
+                kind_rows = [r for r in para if _sp_class(r["rarity"]) == kind]
+                for cid, r in zip(kind_ids, kind_rows):
+                    out[cid] = dict(r, foreign=False)
             continue
         if normal:
             out[no] = normal[0]
