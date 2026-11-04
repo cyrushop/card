@@ -257,13 +257,13 @@ t('bulk set by rarity, with undo', () => {
   assert.deepStrictEqual(owned, { 'OP10-004': 1, 'OP10-005': 3, 'OP10-099': 2 }, 'input untouched');
 });
 
-t('version labels: 異圖, SP and 再版', () => {
+t('version labels: 異圖, SP and 重印', () => {
   assert.strictEqual(E.normRarity('SP卡'), 'SP');
   assert.strictEqual(E.normRarity('SR'), 'SR');
   assert.strictEqual(E.variantLabel({ id: 'OP09-004', rarity: 'SR' }), '');
   assert.strictEqual(E.variantLabel({ id: 'OP09-004_p1', rarity: 'SR' }), '異圖');
   assert.strictEqual(E.variantLabel({ id: 'OP09-004_p3', rarity: 'SP卡' }), 'SP');
-  assert.strictEqual(E.variantLabel({ id: 'OP06-047_r1', rarity: 'R' }), '再版');
+  assert.strictEqual(E.variantLabel({ id: 'OP06-047_r1', rarity: 'R' }), '重印');
   // The official list writes "SP卡": searching SP must still find it, and 異圖 finds every version.
   const sp = { id: 'OP09-004_p3', name: 'x', rarity: 'SP卡' };
   assert.ok(E.matchCard(sp, E.parseQuery('SP'), 0));
