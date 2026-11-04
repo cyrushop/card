@@ -11,9 +11,12 @@ Yuyu-tei sells Japanese cards. Your Asia (Traditional Chinese) cards often
 trade at a different level, so the app has a price factor in 設定.
 
 Parallels: Yuyu-tei lists the normal card and its parallels under the same
-card number. The bot maps the normal one to OP08-001 and the parallels, cheapest
-first, to OP08-001_p1, _p2, ... like the official card list. This mapping is a
-best guess; check expensive cards and set a manual price in the app if needed.
+card number. With the official card list (data/cards.json) the bot matches them
+to that series' official ids: the normal one to OP08-001 and the parallels,
+cheapest first, to the series' parallel ids in order (a reprint such as
+OP11-022 inside EB05 goes to its official OP11-022_p2). The order between two
+parallels of the same card is still a best guess; check expensive cards and set
+a manual price in the app if needed.
 
 Standard library only. Waits about 1 s between requests.
 """
@@ -73,11 +76,12 @@ def _price(container):
 
 
 def _rarity(container, cid):
-    img = container.find("img")
-    alt = (img.attrs.get("alt") or "") if img is not None else ""
-    m = re.search(re.escape(cid) + r"\s+(\S+)", alt, re.I)
-    if m:
-        return m.group(1)
+    # The card picture's alt text reads "EB05-014 P-SR しらほし(パラレル)". On the live site each box
+    # starts with a favourite-star icon, so look for the image that names the card, not the first one.
+    for img in container.find_all("img"):
+        m = re.search(re.escape(cid) + r"\s+(\S+)", img.attrs.get("alt") or "", re.I)
+        if m:
+            return m.group(1)
     n = container
     while n is not None:
         i = (n.attrs.get("id") or "") if hasattr(n, "attrs") else ""
@@ -121,8 +125,31 @@ def parse_shop(html, page_url):
     return out
 
 
-def map_ids(rows, page_set):
-    """Group shop rows by card number and give them app ids (base, _p1, _p2...)."""
+def _suffix_no(cid):
+    m = re.search(r"_p(\d+)$", cid)
+    return int(m.group(1)) if m else 0
+
+
+def official_versions(cards, code):
+    """Card number -> the official ids of that number in one series, e.g. for EB05:
+    'EB05-055' -> ['EB05-055', 'EB05-055_p1', 'EB05-055_p2', 'EB05-055_p3'] and
+    'OP11-022' -> ['OP11-022_p2'] (a parallel reprint that keeps its old number)."""
+    out = {}
+    for c in cards:
+        if c["id"].split("-")[0] == code or any((s or {}).get("code") == code for s in c.get("series", [])):
+            out.setdefault(c["baseId"], []).append(c["id"])
+    for v in out.values():
+        v.sort(key=_suffix_no)
+    return out
+
+
+def map_ids(rows, page_set, official=None):
+    """Give each shop row the id it has in the official card list.
+
+    With `official` (from official_versions): the normal version goes to the base number when the
+    series has it, and the parallels, cheapest first, go to that series' parallel ids in order
+    (_p1 before _p2 ...). Rows beyond what the official list has are left out.
+    Without it: a best guess of base, _p1, _p2 ... in price order."""
     groups = {}
     for r in rows:
         if r["jpy"] is None:
@@ -133,9 +160,16 @@ def map_ids(rows, page_set):
         groups.setdefault(r["cardNo"], []).append(r)
     out = {}
     for no, items in groups.items():
-        home = [r for r in items if not r.get("foreign")] or items
+        known = (official or {}).get(no)
+        home = items if known else ([r for r in items if not r.get("foreign")] or items)
         normal = sorted((r for r in home if not is_parallel(r["rarity"], r["name"])), key=lambda r: r["jpy"])
         para = sorted((r for r in home if is_parallel(r["rarity"], r["name"])), key=lambda r: r["jpy"])
+        if known:
+            if normal and no in known:
+                out[no] = dict(normal[0], foreign=False)
+            for cid, r in zip([k for k in known if k != no], para):
+                out[cid] = dict(r, foreign=False)
+            continue
         if normal:
             out[no] = normal[0]
         for i, r in enumerate(para, 1):
@@ -205,6 +239,9 @@ def main(argv=None):
         print("No sets to read. Run scrape_cards.py first or pass --sets OP08,OP09.", file=sys.stderr)
         return 2
 
+    cards = (_load("cards.json") or {}).get("cards", [])
+    if not cards:
+        print("  (no cards.json: parallels are matched by price order only; run scrape_cards.py first for exact ids)")
     found = {}
     for n, code in enumerate(sets, 1):
         url = SHOP.format(code=code.lower())
@@ -218,7 +255,7 @@ def main(argv=None):
             os.makedirs(raw, exist_ok=True)
             with open(os.path.join(raw, f"yuyutei-{code}.html"), "w", encoding="utf-8") as f:
                 f.write(html)
-        mapped = map_ids(parse_shop(html, url), code)
+        mapped = map_ids(parse_shop(html, url), code, official_versions(cards, code) if cards else None)
         for cid, r in mapped.items():
             if cid not in found or (found[cid].get("foreign") and not r.get("foreign")):
                 found[cid] = r
