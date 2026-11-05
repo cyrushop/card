@@ -187,6 +187,11 @@ t('set groups and progress', () => {
   assert.deepStrictEqual([b.total, b.have], [4, 2]);
   assert.deepStrictEqual(b.byRarity['異圖'], { total: 1, have: 1 });
   assert.strictEqual(E.setProgress(cs, owned, 'PRB01', false).total, 1, 'reprint counts in its series');
+  // Series the official site lists without a code.
+  assert.strictEqual(E.seriesCode({ value: '554110', code: 'OP10', label: 'x' }), 'OP10');
+  assert.strictEqual(E.seriesCode({ value: '554901', code: '', label: '推廣卡' }), 'P');
+  assert.strictEqual(E.seriesCode({ value: '554701', code: '', label: '家庭牌組套裝' }), 'X554701');
+  assert.strictEqual(E.setGroup('X554701'), '其他');
 });
 
 t('pricer returns history in HKD', () => {
