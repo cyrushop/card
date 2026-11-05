@@ -142,10 +142,15 @@ t('deck cost, missing cost, collection value', () => {
   const st = E.deckStatus(entries, { 'OP08-001': 1, 'OP08-002': 1 });
   assert.deepStrictEqual(E.missingCost(st.rows, price), { cost: 15, unknown: 2 });
   assert.deepStrictEqual(E.collectionValue({ 'OP08-002': 3, 'OP08-002_p1': 1, 'OP08-009': 2 }, price),
-    { total: 265, priced: 4, unpriced: 2, altTotal: 250, altCopies: 1 });
+    { total: 265, priced: 4, unpriced: 2, altTotal: 250, altCopies: 1, bigTotal: 250, bigCopies: 1, minUnit: 50 });
   // 異圖 / SP only: normal cards and same-picture reprints (_r) are left out.
   const v = E.collectionValue({ 'OP08-002': 10, 'OP08-002_r1': 2, 'OP08-002_p1': 2 }, E.makePricer({ bot: { 'OP08-002': { jpy: 100 }, 'OP08-002_r1': { jpy: 100 }, 'OP08-002_p1': { jpy: 5000 } }, rate: 0.05 }));
   assert.deepStrictEqual([v.total, v.altTotal, v.altCopies], [560, 500, 2]);
+  // HK$50 or more per card: an expensive normal SEC counts, cheap commons and cheap alt arts do not.
+  const pr = E.makePricer({ bot: { 'OP08-118': { jpy: 2000 }, 'OP08-001': { jpy: 50 }, 'OP08-001_p1': { jpy: 600 } }, rate: 0.05 });
+  const big = E.collectionValue({ 'OP08-118': 1, 'OP08-001': 20, 'OP08-001_p1': 1 }, pr, 50);
+  assert.deepStrictEqual([big.bigTotal, big.bigCopies, big.altTotal], [100, 1, 30]);
+  assert.strictEqual(E.collectionValue({ 'OP08-001_p1': 1 }, pr, 20).bigTotal, 30, 'threshold can be changed');
 });
 
 t('smart search query', () => {
