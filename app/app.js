@@ -191,12 +191,16 @@
   function pricer() {
     return E.makePricer({ manual: state.manualPrices, bot: PRICES.prices, rate: rate(), factor: Number(settings().factor) || 1 });
   }
+  /** Unit price (HKD) from which a card counts as valuable: the 高價卡 page's own setting, 50 by default. */
+  function minUnit() { return Number(settings().valuableMin) || 50; }
+  /** Collection totals are hidden until the viewer taps the eye (hideTotal false = shown). */
+  function totalsHidden() { return settings().hideTotal !== false; }
   /** A collection-level total; masked when the viewer chose to hide totals. */
   function total(n) {
-    return settings().hideTotal ? '<span class="masked" title="已隱藏">HK$ ••••</span>' : hk(n);
+    return totalsHidden() ? '<span class="masked" title="已隱藏">HK$ ••••</span>' : hk(n);
   }
   function eyeButton() {
-    const hidden = !!settings().hideTotal;
+    const hidden = totalsHidden();
     return `<button class="eye" data-hide="1" aria-pressed="${hidden}" title="${hidden ? '顯示總值' : '隱藏總值'}" aria-label="${hidden ? '顯示總值' : '隱藏總值'}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${hidden ? '<path d="M4 4l16 16"/>' : ''}</svg></button>`;
   }
@@ -619,7 +623,7 @@
     const el = $('#tab-home');
     const price = pricer();
     const totalCopies = Object.values(state.owned).reduce((t, n) => t + n, 0);
-    const value = E.collectionValue(state.owned, price);
+    const value = E.collectionValue(state.owned, price, minUnit());
     const mySets = SET_CODES.map(code => E.setProgress(CARDS, state.owned, code, false)).filter(x => x.total);
     const started = mySets.filter(x => x.have);
     const homeSets = mySets.slice().sort((a, b) => setSort(a.code, b.code)); // every series, newest first
@@ -636,7 +640,7 @@
       <div id="h-results"></div>
       <div class="kpis">
         <div class="kpi" role="button" tabindex="0" data-go="collection"><span>我的卡</span><b>${totalCopies.toLocaleString()}</b><small>${Object.keys(state.owned).length} 款</small></div>
-        <div class="kpi" role="button" tabindex="0" data-go="value"><span>總值 ${eyeButton()}</span><b class="price">${total(value.total)}</b><small>${value.unpriced ? value.unpriced + ' 張未有價格' : '全部已有價格'}</small></div>
+        <div class="kpi" role="button" tabindex="0" data-go="value"><span>異圖及 SP 總值 ${eyeButton()}</span><b class="price">${total(value.altTotal)}</b><small>全部卡總值：${total(value.total)}</small><small>單價 HK$${value.minUnit} 或以上：${total(value.bigTotal)}</small></div>
         <div class="kpi" role="button" tabindex="0" data-go="sets"><span>系列收集</span><b>${allTotal ? Math.round(started.reduce((t, x) => t + x.have, 0) / allTotal * 100) : 0}%</b><small>${started.length}/${mySets.length} 個系列已有卡</small></div>
         <div class="kpi" role="button" tabindex="0" data-go="mine"><span>牌組</span><b>${counts('plan')} / ${counts('built')} / ${counts('sold')}</b><small>計劃中 / 已組好 / 已售出</small></div>
       </div>
@@ -764,12 +768,12 @@
   function setSummaryHtml() {
     const x = E.setProgress(CARDS, state.owned, sv.set, sv.parallels);
     const rars = Object.keys(x.byRarity).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
-    const value = E.collectionValue(Object.fromEntries(CARDS.filter(c => E.inSet(c, sv.set)).map(c => [c.id, ownedOf(c.id)])), pricer());
+    const value = E.collectionValue(Object.fromEntries(CARDS.filter(c => E.inSet(c, sv.set)).map(c => [c.id, ownedOf(c.id)])), pricer(), minUnit());
     return `<div class="set-head">
         <button class="back" data-back="1" aria-label="返回">‹</button>
         ${ring(x.pct, 64, Math.round(x.pct * 100) + '%')}
         <div class="grow"><h2>${esc(setName(sv.set))}</h2><div class="muted">${esc(SERIES_LABEL[sv.set] || E.setGroup(sv.set))}</div>
-          <div class="small">${x.have}/${x.total} 款 · ${x.copies} 張 · 總值 <b class="price">${total(value.total)}</b> ${eyeButton()}</div></div>
+          <div class="small">${x.have}/${x.total} 款 · ${x.copies} 張 · 異圖及 SP 總值 <b class="price">${total(value.altTotal)}</b> · 全部卡總值 ${total(value.total)} · 單價 HK$${value.minUnit} 或以上 ${total(value.bigTotal)} ${eyeButton()}</div></div>
       </div>
       <div class="rarity-row">${rars.map(r => `<div class="rar"><b>${x.byRarity[r].have}/${x.byRarity[r].total}</b><span>${esc(r)}</span></div>`).join('')}</div>`;
   }
@@ -1089,7 +1093,7 @@
     const fx = e.target.closest('[data-fx]');
     if (fx) { settings().showEffects = !settings().showEffects; save(); render(); }
     const hide = e.target.closest('[data-hide]');
-    if (hide) { e.stopPropagation(); settings().hideTotal = !settings().hideTotal; save(); render(); }
+    if (hide) { e.stopPropagation(); settings().hideTotal = !totalsHidden(); save(); render(); }
   });
   function fxButton() {
     return `<button class="small${settings().showEffects ? ' primary' : ''}" data-fx="1">${settings().showEffects ? '隱藏中文效果' : '顯示中文效果'}</button>`;
@@ -1353,12 +1357,14 @@
   function renderValue() {
     const el = $('#tab-value');
     const price = pricer();
-    const v = E.collectionValue(state.owned, price);
+    const v = E.collectionValue(state.owned, price, minUnit());
     const hasBot = Object.keys(PRICES.prices || {}).length > 0;
     el.innerHTML = `
       ${hasBot ? '' : `<div class="notice"><b>未有自動價格。</b> 請執行價格 BOT（悠々亭日版售價 × 匯率）：<pre>python3 bot/scrape_prices.py</pre>或在「設定」按「更新價格」。即使沒有 BOT，亦可在下方或卡的詳細頁自行輸入價格。</div>`}
       <div class="stats">
-        <span>卡庫總值 <b class="price">${total(v.total)}</b> ${eyeButton()}</span>
+        <span>異圖及 SP 總值 <b class="price">${total(v.altTotal)}</b>（${v.altCopies} 張） ${eyeButton()}</span>
+        <span id="vf-big"></span>
+        <span>全部卡總值 ${total(v.total)} ${help('<b>為何分開計算？</b><br>普通卡及重印卡數量多，悠々亭售價遠高於實際可賣出的價錢，計入總值會令卡庫價值被高估。<br>「異圖及 SP 總值」只計算異圖及 SP 卡，較接近可變現的價值。<br>「單價 HK$50 或以上」計算所有單價達到下方金額的卡，包括 SR、SEC 等貴價普通卡，但不計白卡；金額可在下方修改。<br>「全部卡總值」則包括所有卡。', '價值說明')}</span>
         <span>有價格 <b>${v.priced}</b> 張 · 未有價格 <b>${v.unpriced}</b> 張</span>
         <span id="vf-sum"></span>
         <span>價格 ${PRICES.fetchedAt ? '更新於 ' + esc(PRICES.fetchedAt.slice(0, 10)) : '未更新'} · 1 JPY = ${rate()} HKD${Number(settings().factor) !== 1 ? ' · 係數 ×' + esc(settings().factor) : ''}</span>
@@ -1402,6 +1408,8 @@
     const rows = valueRows();
     const sum = rows.reduce((s, r) => s + r.total, 0);
     $('#vf-sum').innerHTML = `此處 <b>${rows.length}</b> 款 · 總值 <b class="price">${total(sum)}</b>`;
+    const big = E.collectionValue(state.owned, pricer(), minUnit());
+    $('#vf-big').innerHTML = `單價 HK$${big.minUnit} 或以上 <b class="price">${total(big.bigTotal)}</b>（${big.bigCopies} 張）`;
     $('#vf-list').innerHTML = rows.slice(0, vf.limit).map(r => `<div class="vrow">
       <div class="thumb" data-detail="${esc(r.id)}">${imgTag(r.id)}</div>
       <div class="grow">
