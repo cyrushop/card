@@ -141,7 +141,11 @@ t('deck cost, missing cost, collection value', () => {
   assert.deepStrictEqual(E.deckCost(entries, price), { cost: 30, unknown: ['OP08-003'] });
   const st = E.deckStatus(entries, { 'OP08-001': 1, 'OP08-002': 1 });
   assert.deepStrictEqual(E.missingCost(st.rows, price), { cost: 15, unknown: 2 });
-  assert.deepStrictEqual(E.collectionValue({ 'OP08-002': 3, 'OP08-002_p1': 1, 'OP08-009': 2 }, price), { total: 265, priced: 4, unpriced: 2 });
+  assert.deepStrictEqual(E.collectionValue({ 'OP08-002': 3, 'OP08-002_p1': 1, 'OP08-009': 2 }, price),
+    { total: 265, priced: 4, unpriced: 2, altTotal: 250, altCopies: 1 });
+  // 異圖 / SP only: normal cards and same-picture reprints (_r) are left out.
+  const v = E.collectionValue({ 'OP08-002': 10, 'OP08-002_r1': 2, 'OP08-002_p1': 2 }, E.makePricer({ bot: { 'OP08-002': { jpy: 100 }, 'OP08-002_r1': { jpy: 100 }, 'OP08-002_p1': { jpy: 5000 } }, rate: 0.05 }));
+  assert.deepStrictEqual([v.total, v.altTotal, v.altCopies], [560, 500, 2]);
 });
 
 t('smart search query', () => {

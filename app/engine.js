@@ -334,14 +334,20 @@
   }
 
   /** Value of the whole collection; parallels use their own price. */
+  /**
+   * Value of a collection. altTotal counts only 異圖 and SP cards (_p ids): shop prices of normal
+   * cards and same-picture reprints (_r) are far above what they really sell for, so a total of
+   * every card overstates what the collection is worth.
+   */
   function collectionValue(owned, price) {
-    let total = 0, priced = 0, unpriced = 0;
+    let total = 0, priced = 0, unpriced = 0, altTotal = 0, altCopies = 0;
     for (const [id, n] of Object.entries(owned || {})) {
       if (!(n > 0)) continue;
       const p = price(id);
       if (p) { total += p.hkd * n; priced += n; } else unpriced += n;
+      if (/_p\d+$/i.test(id)) { altCopies += n; if (p) altTotal += p.hkd * n; }
     }
-    return { total: round(total), priced, unpriced };
+    return { total: round(total), priced, unpriced, altTotal: round(altTotal), altCopies };
   }
 
   // ------------------------------------------------------------ search
