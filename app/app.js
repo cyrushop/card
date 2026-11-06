@@ -642,7 +642,7 @@
       <div id="h-results"></div>
       <div class="kpis">
         <div class="kpi" role="button" tabindex="0" data-go="collection"><span>我的卡</span><b>${totalCopies.toLocaleString()}</b><small>${Object.keys(state.owned).length} 款</small></div>
-        <div class="kpi" role="button" tabindex="0" data-go="value"><span>異圖及 SP 總值 ${eyeButton()}</span><b class="price">${total(value.altTotal)}</b><small>全部卡總值：${total(value.total)}</small><small>HK$${value.minUnit} 或以上及 SEC：${total(value.bigTotal)}</small></div>
+        <div class="kpi" role="button" tabindex="0" data-go="value"><span>SEC/異圖/SP 總值 ${eyeButton()}</span><b class="price">${total(value.altTotal)}</b><small>全部卡總值：${total(value.total)}</small></div>
         <div class="kpi" role="button" tabindex="0" data-go="sets"><span>系列收集</span><b>${allTotal ? Math.round(started.reduce((t, x) => t + x.have, 0) / allTotal * 100) : 0}%</b><small>${started.length}/${mySets.length} 個系列已有卡</small></div>
         <div class="kpi" role="button" tabindex="0" data-go="mine"><span>牌組</span><b>${counts('plan')} / ${counts('built')} / ${counts('sold')}</b><small>計劃中 / 已組好 / 已售出</small></div>
       </div>
@@ -775,7 +775,7 @@
         <button class="back" data-back="1" aria-label="返回">‹</button>
         ${ring(x.pct, 64, Math.round(x.pct * 100) + '%')}
         <div class="grow"><h2>${esc(setName(sv.set))}</h2><div class="muted">${esc(SERIES_LABEL[sv.set] || E.setGroup(sv.set))}</div>
-          <div class="small">${x.have}/${x.total} 款 · ${x.copies} 張 · 異圖及 SP 總值 <b class="price">${total(value.altTotal)}</b> · 全部卡總值 ${total(value.total)} · HK$${value.minUnit} 或以上及 SEC ${total(value.bigTotal)} ${eyeButton()}</div></div>
+          <div class="small">${x.have}/${x.total} 款 · ${x.copies} 張 · SEC/異圖/SP 總值 <b class="price">${total(value.altTotal)}</b> · 全部卡總值 ${total(value.total)} · HK$${value.minUnit} 或以上及 SEC ${total(value.bigTotal)} ${eyeButton()}</div></div>
       </div>
       <div class="rarity-row">${rars.map(r => `<div class="rar"><b>${x.byRarity[r].have}/${x.byRarity[r].total}</b><span>${esc(r)}</span></div>`).join('')}</div>`;
   }
@@ -1365,9 +1365,9 @@
     el.innerHTML = `
       ${hasBot ? '' : `<div class="notice"><b>未有自動價格。</b> 請執行價格 BOT（悠々亭日版售價 × 匯率）：<pre>python3 bot/scrape_prices.py</pre>或在「設定」按「更新價格」。即使沒有 BOT，亦可在下方或卡的詳細頁自行輸入價格。</div>`}
       <div class="stats">
-        <span>異圖及 SP 總值 <b class="price">${total(v.altTotal)}</b>（${v.altCopies} 張） ${eyeButton()}</span>
+        <span>SEC/異圖/SP 總值 <b class="price">${total(v.altTotal)}</b>（${v.altCopies} 張） ${eyeButton()}</span>
         <span id="vf-big"></span>
-        <span>全部卡總值 ${total(v.total)} ${help('<b>為何分開計算？</b><br>普通卡及重印卡數量多，悠々亭售價遠高於實際可賣出的價錢，計入總值會令卡庫價值被高估。<br>「異圖及 SP 總值」只計算異圖及 SP 卡，較接近可變現的價值。<br>「HK$50 或以上及 SEC」計算所有單價達到下方金額的卡（包括 SR 等貴價普通卡），以及所有 SEC 卡（不論價錢），但不計白卡；金額可在下方修改。<br>「全部卡總值」則包括所有卡。', '價值說明')}</span>
+        <span>全部卡總值 ${total(v.total)} ${help('<b>為何分開計算？</b><br>普通卡及重印卡數量多，悠々亭售價遠高於實際可賣出的價錢，計入總值會令卡庫價值被高估。<br>「SEC/異圖/SP 總值」只計算 SEC、異圖及 SP 卡，較接近可變現的價值。<br>「HK$50 或以上及 SEC」計算所有單價達到下方金額的卡（包括 SR 等貴價普通卡），以及所有 SEC 卡（不論價錢），但不計白卡；金額可在下方修改。<br>「全部卡總值」則包括所有卡。', '價值說明')}</span>
         <span>有價格 <b>${v.priced}</b> 張 · 未有價格 <b>${v.unpriced}</b> 張</span>
         <span id="vf-sum"></span>
         <span>價格 ${PRICES.fetchedAt ? '更新於 ' + esc(PRICES.fetchedAt.slice(0, 10)) : '未更新'} · 1 JPY = ${rate()} HKD${Number(settings().factor) !== 1 ? ' · 係數 ×' + esc(settings().factor) : ''}</span>
