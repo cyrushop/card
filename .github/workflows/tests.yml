@@ -33,6 +33,9 @@ jobs:
       - name: Demo builder tests
         run: python -I tests/test_demo.py
 
+      - name: Deploy script tests
+        run: python -I tests/test_deploy.py
+
       - name: Python files compile
         run: python -m py_compile serve.py bot/*.py tools/*.py tests/*.py
 
