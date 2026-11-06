@@ -155,6 +155,8 @@ t('deck cost, missing cost, collection value', () => {
   const cheapSec = E.makePricer({ bot: { 'OP09-118': { jpy: 580 }, 'OP09-020': { jpy: 80 } }, rate: 0.05 });
   const withSec = E.collectionValue({ 'OP09-118': 1, 'OP09-020': 10 }, cheapSec, 50, id => id === 'OP09-118');
   assert.deepStrictEqual([withSec.bigTotal, withSec.bigCopies], [29, 1]);
+  // The main SEC/異圖/SP total counts that SEC too, but not the commons.
+  assert.deepStrictEqual([withSec.altTotal, withSec.altCopies], [29, 1]);
 });
 
 t('smart search query', () => {

@@ -335,7 +335,8 @@
 
   /** Value of the whole collection; parallels use their own price. */
   /**
-   * Value of a collection. altTotal counts only 異圖 and SP cards (_p ids): shop prices of normal
+   * Value of a collection. altTotal counts SEC, 異圖 and SP cards (_p ids, plus any card
+   * alwaysCount(id) picks, which the app uses for SEC): shop prices of normal
    * cards and same-picture reprints (_r) are far above what they really sell for, so a total of
    * every card overstates what the collection is worth. bigTotal counts every card (normal or not)
    * whose unit price is at least minUnit HKD, e.g. normal SR / SEC cards but no cheap commons, plus
@@ -348,7 +349,7 @@
       if (!(n > 0)) continue;
       const p = price(id);
       if (p) { total += p.hkd * n; priced += n; } else unpriced += n;
-      if (/_p\d+$/i.test(id)) { altCopies += n; if (p) altTotal += p.hkd * n; }
+      if (/_p\d+$/i.test(id) || (alwaysCount && alwaysCount(id))) { altCopies += n; if (p) altTotal += p.hkd * n; }
       if (p && (p.hkd >= min || (alwaysCount && alwaysCount(id)))) { bigTotal += p.hkd * n; bigCopies += n; }
     }
     return { total: round(total), priced, unpriced, altTotal: round(altTotal), altCopies, bigTotal: round(bigTotal), bigCopies, minUnit: min };
