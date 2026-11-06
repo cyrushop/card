@@ -63,7 +63,7 @@ gcloud run deploy "$SERVICE" \
   --min-instances 0 --max-instances 1 \
   --no-cpu-throttling --cpu 1 --memory 1Gi --timeout 300 \
   "${VOLUME_FLAGS[@]}" \
-  --set-env-vars "^@^OPCG_DATA=/data@ALLOWED_EMAILS=$EMAIL"
+  --set-env-vars "^;^OPCG_DATA=/data;ALLOWED_EMAILS=$EMAIL"
 IMAGE="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(spec.template.spec.containers[0].image)')"
 
 step "5/7 自動更新：Cloud Run 工作及每日排程"
