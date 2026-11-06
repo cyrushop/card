@@ -33,6 +33,18 @@ gcloud config set project "$PROJECT" >/dev/null
 gcloud services enable run.googleapis.com iap.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com storage.googleapis.com cloudscheduler.googleapis.com
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+# Deploying from source builds with the Compute Engine default service account. Newer projects no
+# longer give it broad rights, so the build cannot read the uploaded source ("does not have
+# storage.objects.get access") until it has the Cloud Run Builder role.
+# https://cloud.google.com/run/docs/deploying-source-code
+BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$BUILD_SA" \
+  --role=roles/run.builder --condition=None >/dev/null
+if ! gcloud run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1; then
+  # A new grant takes a couple of minutes to apply; only the first deploy has to wait for it.
+  echo "已授權建置用的服務帳戶（Cloud Run Builder）。首次部署，等候 90 秒讓權限生效…"
+  sleep 90
+fi
 
 step "2/7 建立資料用的 Cloud Storage bucket：gs://$BUCKET"
 if ! gcloud storage buckets describe "gs://$BUCKET" >/dev/null 2>&1; then

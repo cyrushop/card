@@ -25,6 +25,15 @@ class DeployScript(unittest.TestCase):
             emails = parts[1].split("=", 1)[1].replace("$EMAIL", "a.b@gmail.com,c@gmail.com")
             self.assertEqual(emails.split(","), ["a.b@gmail.com", "c@gmail.com"])
 
+    def test_build_account_gets_the_builder_role_before_deploying(self):
+        # The first real deploy stopped with "...-compute@developer.gserviceaccount.com does not have
+        # storage.objects.get access": source builds need roles/run.builder on that account.
+        grant = self.text.find("--role=roles/run.builder")
+        deploy = self.text.find('gcloud run deploy "$SERVICE"')
+        self.assertGreater(grant, 0)
+        self.assertLess(grant, deploy, "the role must be granted before the service is built")
+        self.assertIn('-compute@developer.gserviceaccount.com"', self.text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
