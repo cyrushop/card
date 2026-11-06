@@ -151,6 +151,10 @@ t('deck cost, missing cost, collection value', () => {
   const big = E.collectionValue({ 'OP08-118': 1, 'OP08-001': 20, 'OP08-001_p1': 1 }, pr, 50);
   assert.deepStrictEqual([big.bigTotal, big.bigCopies, big.altTotal], [100, 1, 30]);
   assert.strictEqual(E.collectionValue({ 'OP08-001_p1': 1 }, pr, 20).bigTotal, 30, 'threshold can be changed');
+  // Every SEC counts, even one below the threshold.
+  const cheapSec = E.makePricer({ bot: { 'OP09-118': { jpy: 580 }, 'OP09-020': { jpy: 80 } }, rate: 0.05 });
+  const withSec = E.collectionValue({ 'OP09-118': 1, 'OP09-020': 10 }, cheapSec, 50, id => id === 'OP09-118');
+  assert.deepStrictEqual([withSec.bigTotal, withSec.bigCopies], [29, 1]);
 });
 
 t('smart search query', () => {

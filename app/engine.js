@@ -338,9 +338,10 @@
    * Value of a collection. altTotal counts only 異圖 and SP cards (_p ids): shop prices of normal
    * cards and same-picture reprints (_r) are far above what they really sell for, so a total of
    * every card overstates what the collection is worth. bigTotal counts every card (normal or not)
-   * whose unit price is at least minUnit HKD, e.g. normal SR / SEC cards but no cheap commons.
+   * whose unit price is at least minUnit HKD, e.g. normal SR / SEC cards but no cheap commons, plus
+   * any card alwaysCount(id) picks whatever its price (the app passes every SEC card).
    */
-  function collectionValue(owned, price, minUnit) {
+  function collectionValue(owned, price, minUnit, alwaysCount) {
     const min = Number(minUnit) || 50;
     let total = 0, priced = 0, unpriced = 0, altTotal = 0, altCopies = 0, bigTotal = 0, bigCopies = 0;
     for (const [id, n] of Object.entries(owned || {})) {
@@ -348,7 +349,7 @@
       const p = price(id);
       if (p) { total += p.hkd * n; priced += n; } else unpriced += n;
       if (/_p\d+$/i.test(id)) { altCopies += n; if (p) altTotal += p.hkd * n; }
-      if (p && p.hkd >= min) { bigTotal += p.hkd * n; bigCopies += n; }
+      if (p && (p.hkd >= min || (alwaysCount && alwaysCount(id)))) { bigTotal += p.hkd * n; bigCopies += n; }
     }
     return { total: round(total), priced, unpriced, altTotal: round(altTotal), altCopies, bigTotal: round(bigTotal), bigCopies, minUnit: min };
   }
