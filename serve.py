@@ -24,6 +24,7 @@ Standard library only.
 import argparse
 import hmac
 import json
+import mimetypes
 import os
 import posixpath
 import shutil
@@ -34,6 +35,8 @@ import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
+
+mimetypes.add_type("image/webp", ".webp")  # older Pythons do not know it; compressed card pictures use it
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.abspath(os.environ.get("OPCG_DATA") or os.path.join(ROOT, "data"))
@@ -152,6 +155,10 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         if self.path.startswith("/data/") and not self.path.startswith("/data/images/"):
             self.send_header("Cache-Control", "no-store")
+        elif self.path.startswith("/data/images/"):
+            # Card pictures rarely change: let the browser keep them for a week, so each picture
+            # crosses the network once instead of on every visit (online data transfer is billed).
+            self.send_header("Cache-Control", "private, max-age=604800")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()

@@ -3,6 +3,7 @@
 Synthetic HTML only. The fixtures follow the layout the bots expect; they are
 not copies of the live sites.
 """
+import json
 import os
 import sys
 import unittest
@@ -374,6 +375,65 @@ class CardUpdate(unittest.TestCase):
                     self.assertEqual(f.read(), b"PNG:" + imgs[0].encode())
         finally:
             scrape_cards.net.get, scrape_cards.DATA = saved_get, saved_data
+
+    def test_online_version_stores_small_webp_pictures(self):
+        """OPCG_IMAGE_WIDTH (set in the cloud image) shrinks pictures to WebP, and converts
+        pictures downloaded before it was set without downloading them again."""
+        import io
+        import tempfile
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        big = io.BytesIO()
+        Image.new("RGB", (600, 838), (200, 30, 30)).save(big, "PNG")
+        png = big.getvalue()
+        saved = scrape_cards.net.get, scrape_cards.DATA, os.environ.get("OPCG_IMAGE_WIDTH"), scrape_cards._WIDTH
+        calls = []
+
+        def fake_get(url, delay=1.0, binary=False, retries=3, referer=None):
+            calls.append(url)
+            if binary:
+                return png
+            return pages[url.split("?series=")[1] if "?series=" in url else ""]
+        sel = '<select name="series"><option value="1">【OP-01】</option></select>'
+        pages = {"": sel, "1": self.card("OP01-001", "OP01-001.png?1") + self.card("OP01-002", "OP01-002.png?1")}
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                scrape_cards.DATA = tmp
+                scrape_cards.net.get = fake_get
+                # 1. Pictures downloaded at full size (computer version, no compression).
+                os.environ.pop("OPCG_IMAGE_WIDTH", None)
+                scrape_cards._WIDTH = None
+                scrape_cards.main(["--images", "--delay", "0"])
+                img_dir = os.path.join(tmp, "images")
+                self.assertEqual(sorted(os.listdir(img_dir)), ["OP01-001.png", "OP01-002.png", "manifest.json"])
+                # 2. Compression switched on: existing pictures are converted, none downloaded again.
+                os.environ["OPCG_IMAGE_WIDTH"] = "400"
+                scrape_cards._WIDTH = None
+                calls.clear()
+                scrape_cards.main(["--images", "--delay", "0"])
+                self.assertEqual([u for u in calls if "/images/" in u], [])
+                self.assertEqual(sorted(os.listdir(img_dir)), ["OP01-001.webp", "OP01-002.webp", "manifest.json"])
+                with Image.open(os.path.join(img_dir, "OP01-001.webp")) as im:
+                    self.assertEqual((im.format, im.width), ("WEBP", 400))
+                self.assertLess(os.path.getsize(os.path.join(img_dir, "OP01-001.webp")), len(png))
+                with open(os.path.join(tmp, "cards.json"), encoding="utf-8") as f:
+                    local = [c["localImage"] for c in json.load(f)["cards"]]
+                self.assertEqual(local, ["../data/images/OP01-001.webp", "../data/images/OP01-002.webp"])
+                # 3. A new card is downloaded straight to WebP.
+                pages["1"] += self.card("OP01-003", "OP01-003.png?1")
+                calls.clear()
+                scrape_cards.main(["--images", "--delay", "0"])
+                self.assertEqual(len([u for u in calls if "/images/" in u]), 1)
+                self.assertTrue(os.path.exists(os.path.join(img_dir, "OP01-003.webp")))
+        finally:
+            scrape_cards.net.get, scrape_cards.DATA = saved[0], saved[1]
+            if saved[2] is None:
+                os.environ.pop("OPCG_IMAGE_WIDTH", None)
+            else:
+                os.environ["OPCG_IMAGE_WIDTH"] = saved[2]
+            scrape_cards._WIDTH = saved[3]
 
 
 if __name__ == "__main__":

@@ -6,8 +6,8 @@
 #   REGION     預設 asia-east2（香港）
 #   SERVICE    預設 opcg
 #   BUCKET     預設 PROJECT-opcg-data
-#   IAP_SETUP  console（預設，個人 Google 帳戶適用：最後在 Cloud Console 按幾下啟用 IAP）
-#              gcloud （Google Workspace 機構內的帳戶：全部自動完成）
+#   IAP_SETUP  console（預設，個人 Google 帳戶：需要一個自訂 OAuth 用戶端，腳本會提示你在 Console 建立）
+#              gcloud （Google Workspace 機構內的帳戶：Google 管理的用戶端已足夠，全部自動完成）
 #   SCHEDULE   自動更新檢查時間（cron 格式，香港時間），預設 "0 4 * * *"（每日凌晨 4 時）
 # 重複執行即可更新程式；資料保存在 Cloud Storage，不受影響。
 set -euo pipefail
@@ -60,16 +60,15 @@ gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
 
 step "4/7 建置並部署 Cloud Run 服務（需數分鐘）"
-# --no-allow-unauthenticated：未啟用 IAP 前，任何人（包括你）都無法進入。
+# --no-allow-unauthenticated：只有經 IAP 登入的帳戶才可進入。
+# --iap：直接在 Cloud Run 啟用 IAP（個人帳戶亦可用；但個人帳戶還需要第 6 步的自訂 OAuth 用戶端）。
 # --max-instances 1：只有一個執行個體寫入資料，避免互相覆蓋。
 # --no-cpu-throttling：回應後仍保留 CPU，讓手動按下的 BOT 可在背景執行。
-IAP_FLAG=()
-[ "$IAP_SETUP" = gcloud ] && IAP_FLAG=(--iap)
 gcloud run deploy "$SERVICE" \
   --source . \
   --region "$REGION" \
   --no-allow-unauthenticated \
-  ${IAP_FLAG[@]+"${IAP_FLAG[@]}"} \
+  --iap \
   --service-account "$SA" \
   --execution-environment gen2 \
   --min-instances 0 --max-instances 1 \
@@ -77,6 +76,20 @@ gcloud run deploy "$SERVICE" \
   "${VOLUME_FLAGS[@]}" \
   --set-env-vars "^;^OPCG_DATA=/data;ALLOWED_EMAILS=$EMAIL"
 IMAGE="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(spec.template.spec.containers[0].image)')"
+
+# Each deploy stores a new container image (about 0.1-0.2 GB). Keep the latest 2 and let Artifact
+# Registry delete older ones, so storage stays within the free 0.5 GB.
+POLICY_FILE="$(mktemp)"
+cat > "$POLICY_FILE" <<'EOF'
+[
+ {"name": "keep-latest-2", "action": {"type": "Keep"}, "mostRecentVersions": {"keepCount": 2}},
+ {"name": "delete-older", "action": {"type": "Delete"}, "condition": {"tagState": "any", "olderThan": "1d"}}
+]
+EOF
+gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --location "$REGION" \
+  --policy "$POLICY_FILE" --no-dry-run >/dev/null \
+  || echo "（未能設定自動清理舊映像檔；不影響使用，只是舊版本會佔用 Artifact Registry 空間。）"
+rm -f "$POLICY_FILE"
 
 step "5/7 自動更新：Cloud Run 工作及每日排程"
 # 工作每次執行 bot/auto_update.py：在程式「設定 → 更新方式」選了「自動」才會更新，選「手動」則立即結束。
@@ -108,33 +121,66 @@ grant_access() {
   done
 }
 
-if [ "$IAP_SETUP" = gcloud ]; then
-  step "6/7 讓 IAP 可以呼叫此服務"
-  gcloud services identity create --service=iap.googleapis.com --project="$PROJECT" \
-    || gcloud beta services identity create --service=iap.googleapis.com --project="$PROJECT" \
-    || echo "（未能自動建立 IAP 服務代理；如下一步失敗，請在 Cloud Console 的 Cloud Run → 安全性 中重新啟用 IAP。）"
-  gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
-    --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
-    --role=roles/run.invoker >/dev/null
-  step "7/7 只允許指定帳戶通過 IAP"
-  grant_access
-  printf '\n完成。請以 %s 登入 Google 後開啟：\n  %s\n' "$EMAIL" "$URL"
-else
-  step "6/7 在 Cloud Console 啟用 IAP（個人 Google 帳戶需要這一步）"
-  cat <<EOF
-服務已部署，但目前任何人都無法進入（包括你）。請在瀏覽器完成以下步驟：
-  1. 開啟 https://console.cloud.google.com/run?project=${PROJECT} ，按服務「${SERVICE}」。
-  2. 到「安全性」分頁，在「驗證」選擇需要驗證，並勾選「Identity-Aware Proxy (IAP)」，然後儲存。
-     （Console 會自動建立個人帳戶所需的 OAuth 用戶端。）
-完成後按 Enter，本腳本會把 ${EMAIL} 加入允許名單。
-EOF
-  read -r _
-  step "7/7 只允許指定帳戶通過 IAP"
-  if grant_access; then
-    printf '\n完成。請以 %s 登入 Google 後開啟：\n  %s\n' "$EMAIL" "$URL"
+step "6/7 讓 IAP 可以呼叫此服務"
+gcloud services identity create --service=iap.googleapis.com --project="$PROJECT" >/dev/null 2>&1 \
+  || gcloud beta services identity create --service=iap.googleapis.com --project="$PROJECT" >/dev/null \
+  || echo "（未能建立 IAP 服務代理，請把畫面訊息交給 Claude。）"
+gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com" \
+  --role=roles/run.invoker >/dev/null
+
+if [ "$IAP_SETUP" = console ]; then
+  # Personal accounts: the Google-managed OAuth client only lets in users of an organization, so
+  # without a custom client IAP shows "You don't have access" to everyone, even allowed users.
+  CLIENT_ID="$(gcloud iap settings get --project="$PROJECT" \
+    --format='value(accessSettings.oauthSettings.clientId)' 2>/dev/null || true)"
+  if [ -n "$CLIENT_ID" ]; then
+    echo "已設定自訂 OAuth 用戶端（$CLIENT_ID）。"
   else
-    echo "未能加入允許名單。請在服務的「安全性」分頁 → IAP → 新增主體：${EMAIL}，角色選「IAP-secured Web App User」。"
-    echo "網址：$URL"
+    cat <<EOF
+
+個人 Google 帳戶需要一個自訂 OAuth 用戶端，否則 IAP 會對所有人顯示「You don't have access」。
+請在瀏覽器完成（詳見 deploy/README.md「個人帳戶：自訂 OAuth 用戶端」）：
+  1. https://console.cloud.google.com/auth/overview?project=${PROJECT}
+     → 開始使用：應用程式名稱 OPCG、支援電郵、目標對象選「外部」→ 建立。
+  2. 目標對象 → 測試使用者 → 新增 ${EMAIL}。
+  3. 用戶端 → 建立用戶端 → 網頁應用程式 → 建立，記下用戶端 ID 及密鑰；
+     再編輯該用戶端，在「已授權的重新導向 URI」加入：
+     https://iap.googleapis.com/v1/oauth/clientIds/用戶端ID:handleRedirect
+
+EOF
+    printf '貼上用戶端 ID（直接按 Enter 可略過，稍後再設定）：'
+    read -r CLIENT_ID
+    if [ -n "$CLIENT_ID" ]; then
+      printf '貼上用戶端密鑰（輸入時不會顯示）：'
+      read -rs CLIENT_SECRET
+      echo
+      SETTINGS_FILE="$(mktemp)"
+      printf 'access_settings:\n  oauth_settings:\n    client_id: %s\n    client_secret: %s\n' \
+        "$CLIENT_ID" "$CLIENT_SECRET" > "$SETTINGS_FILE"
+      gcloud iap settings set "$SETTINGS_FILE" --project="$PROJECT" >/dev/null \
+        && echo "IAP 已改用自訂 OAuth 用戶端。" \
+        || echo "未能設定 OAuth 用戶端，請把畫面訊息交給 Claude。"
+      rm -f "$SETTINGS_FILE"
+    else
+      echo "已略過。設定前，網上版會顯示「You don't have access」。"
+    fi
   fi
 fi
-echo "首次開啟後，請到「設定」按「檢查新系列及卡圖」下載卡表；如要自動更新，在「設定 → 更新方式」選「自動」。"
+
+step "7/7 只允許指定帳戶通過 IAP"
+if grant_access; then
+  echo "允許名單："
+  gcloud iap web get-iam-policy --region="$REGION" --resource-type=cloud-run --service="$SERVICE" \
+    --flatten='bindings[].members' --format='value(bindings.members)' | sed 's/^/  /'
+  printf '\n完成。約 5 分鐘後，請以 %s 登入 Google 後開啟（建議先用無痕視窗）：\n  %s\n' "$EMAIL" "$URL"
+else
+  echo "未能加入允許名單。請在服務的「安全性」分頁 → IAP → 新增主體：${EMAIL}，角色選「IAP-secured Web App User」。"
+  echo "網址：$URL"
+fi
+cat <<EOF
+
+首次使用：在 Google 的伺服器上下載卡表、卡圖及價格（約 2 小時，不用保持頁面開啟）：
+  gcloud run jobs execute ${JOB} --region ${REGION} --args="-I,bot/auto_update.py,--force"
+之後如要每日自動更新，在程式「設定 → 更新方式」選「自動」。
+EOF
