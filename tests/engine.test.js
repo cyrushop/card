@@ -337,4 +337,19 @@ t('graded cards: added to every total, search links', () => {
   assert.strictEqual(u.pricecharting, 'https://www.pricecharting.com/search-products?q=OP01-120+PSA+10&type=prices');
 });
 
+t('異圖 / SP / 重印 belong only to the series they were released in', () => {
+  const reprint = { id: 'EB01-009_r1', rarity: 'R', series: [{ code: 'PRB02' }] };
+  const sp = { id: 'OP05-091_p4', rarity: 'SP卡', series: [{ code: 'PRB02' }] };
+  const ownAlt = { id: 'EB05-006_p1', rarity: 'SR', series: [{ code: 'EB05' }] };
+  const base = { id: 'OP01-016', rarity: 'R', series: [{ code: 'PRB01' }] };
+  assert.ok(E.inSet(reprint, 'PRB02') && !E.inSet(reprint, 'EB01'), 'a reprint is not shown in its old series');
+  assert.ok(E.inSet(sp, 'PRB02') && !E.inSet(sp, 'OP05'));
+  assert.ok(E.inSet(ownAlt, 'EB05'));
+  assert.ok(E.inSet(base, 'OP01') && E.inSet(base, 'PRB01'), 'normal versions keep both');
+  assert.deepStrictEqual([reprint, sp, ownAlt, base].map(E.releasedIn), ['PRB02', 'PRB02', 'EB05', 'OP01']);
+  assert.strictEqual(E.releasedIn({ id: 'OP01-001_p1' }), 'OP01', 'no series listed: its number');
+  const prog = E.setProgress([reprint, { id: 'EB01-009', rarity: 'R' }], {}, 'EB01', true);
+  assert.strictEqual(prog.total, 1, 'EB01 counts its own card only');
+});
+
 console.log(`\n${passed} tests passed`);

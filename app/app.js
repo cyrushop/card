@@ -199,10 +199,10 @@
   /** One graded copy: grade, its own price (HK$, typed in), lookup links, delete. */
   function gradedRowHtml(g, withThumb) {
     const u = E.gradedSearchUrls(g.id, g.company, g.grade);
-    const v = E.variantLabel(byId[g.id] || { id: g.id });
+    const v = versionTag(byId[g.id] || { id: g.id });
     return `<div class="own-row graded" data-gid="${esc(g.gid)}">
       ${withThumb ? `<div class="thumb" data-detail="${esc(g.id)}">${imgTag(g.id)}</div>` : ''}
-      <span class="grow"><b>${esc(g.company)} ${esc(g.grade)}</b> ${esc(g.id)}${v ? ` <span class="badge">${esc(v)}</span>` : ''}
+      <span class="grow"><b>${esc(g.company)} ${esc(g.grade)}</b> ${shownId(g.id)}${v ? ` <span class="badge">${esc(v)}</span>` : ''}
         ${withThumb ? `<span class="muted">${esc(cardName(g.id))}</span>` : ''}${g.cert ? ` <span class="muted small">#${esc(g.cert)}</span>` : ''}
         <br><span class="small">查價：<a href="${esc(u.ebay)}" target="_blank" rel="noopener">eBay 已售</a> · <a href="${esc(u.pricecharting)}" target="_blank" rel="noopener">PriceCharting</a></span>
         ${g.priceAt ? `<span class="muted small"> · 價格更新於 ${esc(g.priceAt)}</span>` : ''}</span>
@@ -287,9 +287,21 @@
   }
   /** Badge after a card's rarity in lists: 異圖 / 重印. SP cards need none: their rarity already reads SP. */
   function altBadge(c) {
-    const v = E.variantLabel(c);
-    return v && v !== c.rarity ? ` <span class="badge">${v}</span>` : '';
+    const v = versionTag(c);
+    return v && v !== c.rarity ? ` <span class="badge">${esc(v)}</span>` : '';
   }
+  /**
+   * What sets a version apart: 異圖 / SP / 重印, plus the series it came out in when that is not
+   * its number's series (e.g. "重印 PRB02", "SP EB05"); '' for the normal card.
+   */
+  function versionTag(c) {
+    const k = E.variantLabel(c || {});
+    if (!k) return '';
+    const r = E.releasedIn(c);
+    return r && r !== E.setOf(c.id) ? `${k} ${r === 'P' ? '推廣卡' : setName(r)}` : k;
+  }
+  /** Card number as people read it (OP01-120); the internal version id (OP01-120_p2) stays in the tooltip. */
+  function shownId(id) { return `<span title="${esc(id)}">${esc(E.baseId(id))}</span>`; }
   function cardName(id) { const c = byId[id] || byId[E.baseId(id)]; return c ? c.name : ''; }
   function imgSrc(id) {
     const c = byId[id] || byId[E.baseId(id)];
@@ -551,8 +563,8 @@
     const p = (price || pricer())(c.id);
     const r = c.id === E.baseId(c.id) ? reserved[c.id] || 0 : 0;
     return `<div class="tile${n ? ' has' : ''}" data-id="${esc(c.id)}">
-      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}${E.variantLabel(c) ? `<span class="alt-badge">${E.variantLabel(c)}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
-      <div class="meta">${esc(c.id)} <span class="muted">${esc(c.rarity || '')}</span> ${dots(c)}</div>
+      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}${versionTag(c) ? `<span class="alt-badge">${esc(versionTag(c))}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
+      <div class="meta">${shownId(c.id)} <span class="muted">${esc(c.rarity || '')}</span> ${dots(c)}</div>
       <div class="meta name" title="${esc(c.name)}">${esc(c.name || (c.unknown ? '（卡表沒有資料）' : ''))}</div>
       <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${E.isInf(n) ? '∞' : Math.max(0, n - r)}` : ''}</div>
       <div class="qty"><button data-act="dec" aria-label="減一">−</button>${qtyInput(c.id, n, 'data-tq', 'n' + (n ? '' : ' zero'))}<button data-act="inc" aria-label="加一">+</button><button data-act="inf" class="inf${E.isInf(n) ? ' on' : ''}" title="很多，不計數" aria-label="設為 ∞（很多，不計數）">∞</button></div>
@@ -584,7 +596,7 @@
     const tile = (k, v, extra) => v || v === 0 ? `<div class="stat"><span>${k}</span><b>${extra || esc(v)}</b></div>` : '';
     const setCode = E.setOf(id);
     // 普通 / 異圖 1 / 異圖 2 / SP / 重印: numbered only when one kind appears more than once.
-    const kindOf = v => v === base ? '普通' : E.variantLabel(byId[v] || { id: v });
+    const kindOf = v => v === base ? '普通' : versionTag(byId[v] || { id: v });
     const label = v => {
       const same = vars.filter(x => kindOf(x) === kindOf(v));
       return same.length > 1 ? `${kindOf(v)} ${same.indexOf(v) + 1}` : kindOf(v);
@@ -596,7 +608,7 @@
           <div class="thumb">${imgTag(v)}</div><span>${esc(label(v))}</span></button>`).join('')}</div>` : ''}
       </div>
       <div class="cd-right">
-        <div class="chips">${c.category ? `<span class="chip">${esc(CATS[c.category] || c.categoryRaw || c.category)}</span>` : ''}<span class="chip">${esc(id)}</span>
+        <div class="chips">${c.category ? `<span class="chip">${esc(CATS[c.category] || c.categoryRaw || c.category)}</span>` : ''}<span class="chip">${shownId(id)}</span>
           ${c.rarity ? `<span class="chip strong">${esc(c.rarity)}</span>` : ''}${setCode ? `<button class="chip link" data-goset="${esc(setCode)}">${esc(setCode)} ›</button>` : ''}</div>
         <h2>${esc(c.name || id)}</h2>
         ${c.feature ? `<div class="muted">${esc(c.feature)}</div>` : ''}
@@ -616,7 +628,7 @@
         <div class="box">
           <div class="box-head"><span>我的收藏</span><span class="muted">${vars.reduce((t, v) => t + E.countable(ownedOf(v)), 0)}${vars.some(v => E.isInf(ownedOf(v))) ? '+' : ''} 張${reserved ? ` · 預留 ${reserved}` : ''}</span></div>
           ${vars.map(v => { const vp = price(v); return `<div class="own-row${v === id ? ' on' : ''}">
-            <span class="grow">${esc(label(v))} <span class="muted">${esc(v)}</span></span>
+            <span class="grow" title="${esc(v)}">${esc(label(v))}</span>
             <span class="muted small">${vp ? hk(vp.hkd) : ''}</span>
             <span class="cnt"><button class="small" data-d="${esc(v)}" data-n="-1" aria-label="減一">−</button>${qtyInput(v, ownedOf(v), 'data-q', 'qin')}<button class="small primary" data-d="${esc(v)}" data-n="1" aria-label="加一">+</button><button class="small inf${E.isInf(ownedOf(v)) ? ' on' : ''}" data-dinf="${esc(v)}" title="很多，不計數" aria-label="設為 ∞">∞</button></span>
           </div>`; }).join('')}
@@ -805,7 +817,7 @@
     const price = pricer();
     box.innerHTML = `<div class="sec-head"><h2>${hits.length} 個結果</h2>${hits.length > 24 ? `<button class="see" data-all="1">查看全部 ›</button>` : ''}</div>
       <div class="hscroll wrap">${hits.slice(0, 24).map(c => { const n = ownedOf(c.id), p = price(c.id); return `<button class="mini" data-detail="${esc(c.id)}">
-        <div class="thumb">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}</div><small>${esc(c.id)}</small>${p ? `<small class="price">${hk(p.hkd)}</small>` : ''}</button>`; }).join('')}</div>`;
+        <div class="thumb">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}</div><small title="${esc(c.id)}">${esc(E.baseId(c.id) + (versionTag(c) ? ' ' + versionTag(c) : ''))}</small>${p ? `<small class="price">${hk(p.hkd)}</small>` : ''}</button>`; }).join('')}</div>`;
   }
 
   // =============================================================== SETS
@@ -884,7 +896,7 @@
     const n = ownedOf(c.id);
     return `<div class="brow${n ? ' has' : ''}" data-id="${esc(c.id)}">
       <div class="thumb" data-detail="${esc(c.id)}">${imgTag(c.id)}</div>
-      <label class="grow" for="b-${esc(c.id)}"><b>${esc(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${altBadge(c)}
+      <label class="grow" for="b-${esc(c.id)}"><b>${shownId(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${altBadge(c)}
         <span class="bname">${esc(c.name || '')}</span></label>
       <input id="b-${esc(c.id)}" class="bnum" data-bid="${esc(c.id)}" value="${n ? E.fmtQty(n) : ''}" placeholder="0"
         inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="4" aria-label="${esc(c.id)} 數量（可輸入 ∞）">
@@ -1555,7 +1567,7 @@
     $('#vf-list').innerHTML = rows.slice(0, vf.limit).map(r => `<div class="vrow">
       <div class="thumb" data-detail="${esc(r.id)}">${imgTag(r.id)}</div>
       <div class="grow">
-        <div><b>${esc(r.id)}</b> <span class="muted">${esc(r.c.rarity || '')}</span> ${esc(r.c.name || '')}${altBadge(r.c)}</div>
+        <div><b>${shownId(r.id)}</b> <span class="muted">${esc(r.c.rarity || '')}</span> ${esc(r.c.name || '')}${altBadge(r.c)}</div>
         <div class="muted" style="font-size:12px">${r.p.source === 'manual' ? `手動（${esc(r.p.at || '')}）<button class="small" data-clear="${esc(r.id)}">改回自動價格</button>` : `悠々亭 ¥${Number(r.p.jpy).toLocaleString()}${r.p.stock === 0 ? ' · 缺貨' : ''} · ${esc(r.p.at || '')}`}
           · <a href="${esc(shopUrl(r.id))}" target="_blank" rel="noopener">悠々亭</a>${r.reserved ? ` · 預留 ${r.reserved}` : ''}</div>
       </div>
