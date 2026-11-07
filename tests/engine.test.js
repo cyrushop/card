@@ -142,7 +142,8 @@ t('deck cost, missing cost, collection value', () => {
   const st = E.deckStatus(entries, { 'OP08-001': 1, 'OP08-002': 1 });
   assert.deepStrictEqual(E.missingCost(st.rows, price), { cost: 15, unknown: 2 });
   assert.deepStrictEqual(E.collectionValue({ 'OP08-002': 3, 'OP08-002_p1': 1, 'OP08-009': 2 }, price),
-    { total: 265, priced: 4, unpriced: 2, altTotal: 250, altCopies: 1, bigTotal: 250, bigCopies: 1, minUnit: 50 });
+    { total: 265, priced: 4, unpriced: 2, altTotal: 250, altCopies: 1, bigTotal: 250, bigCopies: 1, minUnit: 50,
+      gradedTotal: 0, gradedCount: 0, gradedUnpriced: 0 });
   // 異圖 / SP only: normal cards and same-picture reprints (_r) are left out.
   const v = E.collectionValue({ 'OP08-002': 10, 'OP08-002_r1': 2, 'OP08-002_p1': 2 }, E.makePricer({ bot: { 'OP08-002': { jpy: 100 }, 'OP08-002_r1': { jpy: 100 }, 'OP08-002_p1': { jpy: 5000 } }, rate: 0.05 }));
   assert.deepStrictEqual([v.total, v.altTotal, v.altCopies], [560, 500, 2]);
@@ -291,6 +292,49 @@ t('version labels: 異圖, SP and 重印', () => {
   assert.ok(!E.matchCard({ id: 'OP09-004', name: 'x', rarity: 'SR' }, E.parseQuery('異圖'), 0));
   const prog = E.setProgress([{ id: 'OP09-004', rarity: 'SR' }, { id: 'OP09-004_p1', rarity: 'SR' }, sp], {}, 'OP09', true);
   assert.deepStrictEqual(Object.keys(prog.byRarity).sort(), ['SP', 'SR', '異圖']);
+});
+
+t('∞ copies: typed, counted, sold and bulk-set', () => {
+  assert.strictEqual(E.parseQty('∞'), E.INF);
+  assert.strictEqual(E.parseQty(' inf '), E.INF);
+  assert.strictEqual(E.parseQty('*'), E.INF);
+  assert.strictEqual(E.parseQty('12'), 12);
+  assert.strictEqual(E.parseQty(''), 0);
+  assert.strictEqual(E.parseQty('abc'), null);
+  assert.strictEqual(E.fmtQty(E.INF), '∞');
+  assert.strictEqual(E.fmtQty(E.INF - 4), '∞', 'a few taken away is still plenty');
+  assert.strictEqual(E.fmtQty(3), '3');
+  const owned = { 'OP08-002': E.INF, 'OP08-003': 2 };
+  assert.strictEqual(E.totalCopies(owned), 3, '∞ counts as one copy in totals');
+  const price = E.makePricer({ bot: { 'OP08-002': { jpy: 100 } }, rate: 0.05 });
+  assert.strictEqual(E.collectionValue(owned, price, 50).total, 5, '∞ is valued as one copy');
+  // A deck needing 4 is complete, and selling it leaves ∞.
+  const st = E.deckStatus([{ id: 'OP08-002', count: 4 }], owned);
+  assert.strictEqual(st.missing, 0);
+  assert.ok(E.isInf(E.sellDeck(owned, [{ id: 'OP08-002', count: 4 }]).owned['OP08-002']));
+  // Bulk: set every C to ∞; adding to ∞ keeps ∞; undo restores.
+  const b = E.bulkSet({ 'OP08-005': 2 }, ['OP08-005', 'OP08-006'], 'set', E.INF);
+  assert.deepStrictEqual(Object.values(b.owned).map(E.fmtQty), ['∞', '∞']);
+  assert.ok(E.isInf(E.bulkSet(b.owned, ['OP08-005'], 'add', 2).owned['OP08-005']));
+  assert.deepStrictEqual(E.undoBulk(b.owned, b.prev), { 'OP08-005': 2 });
+  assert.strictEqual(E.setProgress([{ id: 'OP08-002', rarity: 'C' }], owned, 'OP08', false).copies, 1);
+});
+
+t('graded cards: added to every total, search links', () => {
+  const price = E.makePricer({ bot: { 'OP08-002': { jpy: 100 } }, rate: 0.05 });
+  const graded = [
+    { id: 'OP01-120_p1', company: 'PSA', grade: '10', price: 3000 },
+    { id: 'OP01-120', company: 'BGS', grade: '9.5', price: '' },
+  ];
+  const v = E.collectionValue({ 'OP08-002': 2 }, price, 50, null, graded);
+  assert.deepStrictEqual([v.total, v.altTotal, v.bigTotal], [3010, 3000, 3000]);
+  assert.deepStrictEqual([v.gradedTotal, v.gradedCount, v.gradedUnpriced], [3000, 2, 1]);
+  assert.deepStrictEqual(E.gradeOptions('PSA').slice(0, 2), ['10', '9']);
+  assert.ok(E.gradeOptions('BGS').includes('10 Black Label'));
+  const u = E.gradedSearchUrls('OP01-120_p1', 'PSA', '10');
+  assert.strictEqual(u.query, 'OP01-120 PSA 10');
+  assert.strictEqual(u.ebay, 'https://www.ebay.com/sch/i.html?_nkw=OP01-120+PSA+10&LH_Sold=1&LH_Complete=1');
+  assert.strictEqual(u.pricecharting, 'https://www.pricecharting.com/search-products?q=OP01-120+PSA+10&type=prices');
 });
 
 console.log(`\n${passed} tests passed`);

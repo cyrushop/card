@@ -51,7 +51,7 @@
   let saveTimer = null;
 
   function blankState() {
-    return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [],
+    return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [], graded: [],
       settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50,
         autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true } } };
   }
@@ -63,6 +63,7 @@
       owned: s.owned && typeof s.owned === 'object' ? s.owned : {},
       decks: Array.isArray(s.decks) ? s.decks : [],
       manualPrices: s.manualPrices && typeof s.manualPrices === 'object' ? s.manualPrices : {},
+      graded: Array.isArray(s.graded) ? s.graded.filter(g => g && g.id && g.company) : [],
       settings: Object.assign(b.settings, s.settings || {}),
       openLog: Array.isArray(s.openLog) ? s.openLog.slice(0, 200) : [],
       savedAt: s.savedAt,
@@ -183,9 +184,63 @@
   const available = excludeId => E.availableTotals(state, excludeId);
   const ownedOf = id => state.owned[id] || 0;
   function setOwned(id, n) {
-    n = Math.max(0, n | 0);
+    n = E.isInf(n) ? E.INF : Math.max(0, Math.floor(Number(n)) || 0);
     if (n) state.owned[id] = n; else delete state.owned[id];
     save();
+  }
+  // ---------------------------------------------------- graded cards
+  /** Graded copies (PSA / CGC / BGS) of one card number, any version. */
+  function gradedOf(base) { return state.graded.filter(g => E.baseId(g.id) === base); }
+  /** Graded copies whose card belongs to a series. */
+  function gradedInSet(code) { return state.graded.filter(g => byId[g.id] ? E.inSet(byId[g.id], code) : E.setOf(g.id) === code); }
+  function gradeSelect(company, cur) {
+    return E.gradeOptions(company).map(g => `<option${g === cur ? ' selected' : ''}>${esc(g)}</option>`).join('');
+  }
+  /** One graded copy: grade, its own price (HK$, typed in), lookup links, delete. */
+  function gradedRowHtml(g, withThumb) {
+    const u = E.gradedSearchUrls(g.id, g.company, g.grade);
+    const v = E.variantLabel(byId[g.id] || { id: g.id });
+    return `<div class="own-row graded" data-gid="${esc(g.gid)}">
+      ${withThumb ? `<div class="thumb" data-detail="${esc(g.id)}">${imgTag(g.id)}</div>` : ''}
+      <span class="grow"><b>${esc(g.company)} ${esc(g.grade)}</b> ${esc(g.id)}${v ? ` <span class="badge">${esc(v)}</span>` : ''}
+        ${withThumb ? `<span class="muted">${esc(cardName(g.id))}</span>` : ''}${g.cert ? ` <span class="muted small">#${esc(g.cert)}</span>` : ''}
+        <br><span class="small">查價：<a href="${esc(u.ebay)}" target="_blank" rel="noopener">eBay 已售</a> · <a href="${esc(u.pricecharting)}" target="_blank" rel="noopener">PriceCharting</a></span>
+        ${g.priceAt ? `<span class="muted small"> · 價格更新於 ${esc(g.priceAt)}</span>` : ''}</span>
+      <label class="small">HK$ <input class="gp" data-gp="${esc(g.gid)}" type="number" min="0" step="1" value="${esc(g.price ?? '')}" placeholder="價格" aria-label="${esc(g.id)} ${esc(g.company)} ${esc(g.grade)} 價格 HK$"></label>
+      <button class="small" data-gdel="${esc(g.gid)}" aria-label="刪除此評級卡">刪除</button>
+    </div>`;
+  }
+  function setGradedPrice(gid, val) {
+    const g = state.graded.find(x => x.gid === gid);
+    if (!g) return;
+    g.price = val === '' ? '' : Math.max(0, Number(val) || 0);
+    g.priceAt = new Date().toISOString().slice(0, 10);
+    save();
+  }
+  async function deleteGraded(gid) {
+    const g = state.graded.find(x => x.gid === gid);
+    if (!g || !(await ask(`刪除 ${g.id} ${g.company} ${g.grade}？`, { ok: '刪除' }))) return false;
+    state.graded = state.graded.filter(x => x.gid !== gid);
+    save();
+    return true;
+  }
+  /** A count box: type a number, or ∞ for "plenty, don't count". */
+  function qtyInput(id, n, attr, cls) {
+    return `<input class="${cls || 'qin'}" ${attr}="${esc(id)}" value="${n ? E.fmtQty(n) : ''}" placeholder="0" inputmode="numeric"
+      enterkeyhint="done" autocomplete="off" maxlength="4" aria-label="${esc(id)} 數量（可輸入 ∞）">`;
+  }
+  /** Read a count box; puts the tidy value back. Returns the count, or null (and a hint) if unreadable. */
+  function readQty(input) {
+    const n = E.parseQty(input.value);
+    if (n === null) { toast('請輸入數字，或輸入 ∞（很多，不計數）'); input.value = E.fmtQty(ownedOf(input.dataset.q || input.dataset.bid || input.dataset.tq)); return null; }
+    input.value = n ? E.fmtQty(n) : '';
+    return n;
+  }
+  /** + / − on a card: ∞ stays ∞ (type a number to change it). */
+  function stepOwned(id, d) {
+    if (E.isInf(ownedOf(id))) { toast('數量為 ∞：如要改為實數，請直接輸入'); return false; }
+    setOwned(id, ownedOf(id) + d);
+    return true;
   }
   function rate() { return Number(settings().rate) || PRICES.jpyToHkd || DEFAULT_RATE; }
   function pricer() {
@@ -466,13 +521,23 @@
       $('#cf-more').addEventListener('click', () => { cf.limit += 240; drawGrid(); });
       $('#cf-ft').addEventListener('click', () => el.querySelector('.toolbar').classList.toggle('show-filters'));
       $('#cf-grid').addEventListener('click', onGridClick);
+      $('#cf-grid').addEventListener('change', e => {
+        if (!e.target.dataset.tq) return;
+        const n = readQty(e.target);
+        if (n === null) return;
+        setOwned(e.target.dataset.tq, n);
+        const tile = e.target.closest('.tile');
+        tile.outerHTML = tileHtml(byId[tile.dataset.id] || { id: tile.dataset.id, unknown: true }, E.reservedTotals(state.decks));
+        const b = $('#cf-stats b'); if (b) b.textContent = E.totalCopies(state.owned);
+      });
+      $('#cf-grid').addEventListener('keydown', e => { if (e.target.dataset.tq && e.key === 'Enter') e.target.blur(); });
     }
     drawGrid();
   }
   function drawGrid() {
     const list = collectionItems();
     const reserved = E.reservedTotals(state.decks);
-    const totalCopies = Object.values(state.owned).reduce((s, n) => s + n, 0);
+    const totalCopies = E.totalCopies(state.owned);
     const distinct = Object.keys(state.owned).length;
     $('#cf-stats').innerHTML = `<span>總共 <b>${totalCopies}</b> 張 · <b>${distinct}</b> 款</span>
       <span>符合篩選 <b>${list.length}</b> 款</span>
@@ -486,11 +551,11 @@
     const p = (price || pricer())(c.id);
     const r = c.id === E.baseId(c.id) ? reserved[c.id] || 0 : 0;
     return `<div class="tile${n ? ' has' : ''}" data-id="${esc(c.id)}">
-      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${n}</span>` : ''}${E.variantLabel(c) ? `<span class="alt-badge">${E.variantLabel(c)}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
+      <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}${E.variantLabel(c) ? `<span class="alt-badge">${E.variantLabel(c)}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
       <div class="meta">${esc(c.id)} <span class="muted">${esc(c.rarity || '')}</span> ${dots(c)}</div>
       <div class="meta name" title="${esc(c.name)}">${esc(c.name || (c.unknown ? '（卡表沒有資料）' : ''))}</div>
-      <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${Math.max(0, n - r)}` : ''}</div>
-      <div class="qty"><button data-act="dec" aria-label="減一">−</button><span class="n${n ? '' : ' zero'}">${n}</span><button data-act="inc" aria-label="加一">+</button></div>
+      <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${E.isInf(n) ? '∞' : Math.max(0, n - r)}` : ''}</div>
+      <div class="qty"><button data-act="dec" aria-label="減一">−</button>${qtyInput(c.id, n, 'data-tq', 'n' + (n ? '' : ' zero'))}<button data-act="inc" aria-label="加一">+</button><button data-act="inf" class="inf${E.isInf(n) ? ' on' : ''}" title="很多，不計數" aria-label="設為 ∞（很多，不計數）">∞</button></div>
     </div>`;
   }
   function onGridClick(e) {
@@ -499,9 +564,10 @@
     if (!btn || !tile) return;
     const id = tile.dataset.id;
     if (btn.dataset.act === 'detail') return showDetail(id);
-    setOwned(id, ownedOf(id) + (btn.dataset.act === 'inc' ? 1 : -1));
+    if (btn.dataset.act === 'inf') setOwned(id, E.INF);
+    else if (!stepOwned(id, btn.dataset.act === 'inc' ? 1 : -1)) return;
     tile.outerHTML = tileHtml(byId[id] || { id, unknown: true }, E.reservedTotals(state.decks));
-    const totalCopies = Object.values(state.owned).reduce((s, n) => s + n, 0);
+    const totalCopies = E.totalCopies(state.owned);
     const b = $('#cf-stats b'); if (b) b.textContent = totalCopies;
   }
 
@@ -548,31 +614,66 @@
             <a href="${esc(shopUrl(id))}" target="_blank" rel="noopener">悠々亭 ›</a></div>
         </div>
         <div class="box">
-          <div class="box-head"><span>我的收藏</span><span class="muted">${vars.reduce((t, v) => t + ownedOf(v), 0)} 張${reserved ? ` · 預留 ${reserved}` : ''}</span></div>
+          <div class="box-head"><span>我的收藏</span><span class="muted">${vars.reduce((t, v) => t + E.countable(ownedOf(v)), 0)}${vars.some(v => E.isInf(ownedOf(v))) ? '+' : ''} 張${reserved ? ` · 預留 ${reserved}` : ''}</span></div>
           ${vars.map(v => { const vp = price(v); return `<div class="own-row${v === id ? ' on' : ''}">
             <span class="grow">${esc(label(v))} <span class="muted">${esc(v)}</span></span>
             <span class="muted small">${vp ? hk(vp.hkd) : ''}</span>
-            <span class="cnt"><button class="small" data-d="${esc(v)}" data-n="-1" aria-label="減一">−</button><b>${ownedOf(v)}</b><button class="small primary" data-d="${esc(v)}" data-n="1" aria-label="加一">+</button></span>
+            <span class="cnt"><button class="small" data-d="${esc(v)}" data-n="-1" aria-label="減一">−</button>${qtyInput(v, ownedOf(v), 'data-q', 'qin')}<button class="small primary" data-d="${esc(v)}" data-n="1" aria-label="加一">+</button><button class="small inf${E.isInf(ownedOf(v)) ? ' on' : ''}" data-dinf="${esc(v)}" title="很多，不計數" aria-label="設為 ∞">∞</button></span>
           </div>`; }).join('')}
+        </div>
+        <div class="box">
+          <div class="box-head"><span>評級卡 ${help('記錄經 PSA、CGC 或 BGS 評級的卡及其分數。<br>「查價」會以卡號及評級在 eBay 已售及 PriceCharting 搜尋（美元）；請按實際成交價，以港元輸入價格。<br>評級卡的價格會計入所有總值。', '評級卡說明')}</span><span class="muted">${gradedOf(base).length} 張</span></div>
+          ${gradedOf(base).map(g => gradedRowHtml(g, false)).join('')}
+          <div class="grade-add">
+            <select id="ga-ver" aria-label="版本">${vars.map(v => `<option value="${esc(v)}"${v === id ? ' selected' : ''}>${esc(label(v))}</option>`).join('')}</select>
+            <select id="ga-co" aria-label="評級公司">${Object.keys(E.GRADERS).map(k => `<option>${k}</option>`).join('')}</select>
+            <select id="ga-grade" aria-label="分數">${gradeSelect('PSA', '10')}</select>
+            <input id="ga-cert" placeholder="證書編號（可不填）" autocomplete="off" style="width:140px">
+            <input id="ga-price" type="number" min="0" step="1" placeholder="HK$（可稍後填）" style="width:120px">
+            <button class="small primary" data-gadd="1">加入評級卡</button>
+          </div>
         </div>
         ${c.text || c.trigger ? `<div class="box effect">${effectHtml(c.text)}${c.trigger ? `<div style="margin-top:6px">${triggerHtml(c.trigger)}</div>` : ''}</div>` : ''}
         ${c.getInfo ? `<div class="muted small">獲取方法：${esc(c.getInfo)}</div>` : ''}
         ${!c.text && !CARDS.length ? '<div class="notice small">未有官方中文效果：請先執行卡表 BOT（asia-tc.onepiece-cardgame.com）。</div>' : ''}
         ${usedIn.length ? `<div class="box"><div class="box-head"><span>用於我的牌組</span></div>${usedIn.map(d => `<div class="own-row"><span class="grow">${esc(d.name)}</span><span class="muted small">${d.entries.find(e => e.id === base).count} 張 · ${statusLabel(d.status)}</span></div>`).join('')}</div>` : ''}
       </div></div>`;
+    $('#modal-body').onkeydown = e => { if (e.target.dataset.q && e.key === 'Enter') e.target.blur(); };
     $('#modal-body').onchange = e => {
+      if (e.target.id === 'ga-co') { $('#ga-grade').innerHTML = gradeSelect(e.target.value); return; }
+      if (e.target.dataset.gp) { setGradedPrice(e.target.dataset.gp, e.target.value); showDetail(id); render(); return; }
+      if (e.target.dataset.q) {
+        const n = readQty(e.target);
+        if (n === null) return;
+        setOwned(e.target.dataset.q, n);
+        showDetail(id);
+        if (current === 'collection') drawGrid();
+        else if (current === 'sets' || current === 'home') render();
+        return;
+      }
       const m = e.target.closest('[data-mp]');
       if (!m) return;
       setManualPrice(m.dataset.mp, m.value);
       showDetail(id);
       render();
     };
-    $('#modal-body').onclick = e => {
+    $('#modal-body').onclick = async e => {
+      if (e.target.closest('[data-gadd]')) {
+        const price = $('#ga-price').value;
+        state.graded.push({ gid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), id: $('#ga-ver').value,
+          company: $('#ga-co').value, grade: $('#ga-grade').value, cert: $('#ga-cert').value.trim(),
+          price: price === '' ? '' : Math.max(0, Number(price) || 0), priceAt: price === '' ? '' : new Date().toISOString().slice(0, 10) });
+        save(); toast('已加入評級卡'); showDetail(id); render();
+        return;
+      }
+      const gd = e.target.closest('[data-gdel]');
+      if (gd) { if (await deleteGraded(gd.dataset.gdel)) { showDetail(id); render(); } return; }
       const g = e.target.closest('[data-goset]');
       if (g) { $('#modal').close(); sv.set = g.dataset.goset; showTab('sets'); return; }
+      const inf = e.target.closest('[data-dinf]');
       const b = e.target.closest('[data-d]');
-      if (!b) return;
-      setOwned(b.dataset.d, ownedOf(b.dataset.d) + Number(b.dataset.n));
+      if (inf) setOwned(inf.dataset.dinf, E.INF);
+      else if (!b || !stepOwned(b.dataset.d, Number(b.dataset.n))) return;
       showDetail(id);
       if (current === 'collection') drawGrid();
       else if (current === 'sets' || current === 'home') render();
@@ -624,8 +725,8 @@
   function renderHome() {
     const el = $('#tab-home');
     const price = pricer();
-    const totalCopies = Object.values(state.owned).reduce((t, n) => t + n, 0);
-    const value = E.collectionValue(state.owned, price, minUnit(), isSec);
+    const totalCopies = E.totalCopies(state.owned);
+    const value = E.collectionValue(state.owned, price, minUnit(), isSec, state.graded);
     const mySets = SET_CODES.map(code => E.setProgress(CARDS, state.owned, code, false)).filter(x => x.total);
     const started = mySets.filter(x => x.have);
     const homeSets = mySets.slice().sort((a, b) => setSort(a.code, b.code)); // every series, newest first
@@ -704,7 +805,7 @@
     const price = pricer();
     box.innerHTML = `<div class="sec-head"><h2>${hits.length} 個結果</h2>${hits.length > 24 ? `<button class="see" data-all="1">查看全部 ›</button>` : ''}</div>
       <div class="hscroll wrap">${hits.slice(0, 24).map(c => { const n = ownedOf(c.id), p = price(c.id); return `<button class="mini" data-detail="${esc(c.id)}">
-        <div class="thumb">${imgTag(c.id)}${n ? `<span class="own-badge">×${n}</span>` : ''}</div><small>${esc(c.id)}</small>${p ? `<small class="price">${hk(p.hkd)}</small>` : ''}</button>`; }).join('')}</div>`;
+        <div class="thumb">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}</div><small>${esc(c.id)}</small>${p ? `<small class="price">${hk(p.hkd)}</small>` : ''}</button>`; }).join('')}</div>`;
   }
 
   // =============================================================== SETS
@@ -770,7 +871,7 @@
   function setSummaryHtml() {
     const x = E.setProgress(CARDS, state.owned, sv.set, sv.parallels);
     const rars = Object.keys(x.byRarity).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
-    const value = E.collectionValue(Object.fromEntries(CARDS.filter(c => E.inSet(c, sv.set)).map(c => [c.id, ownedOf(c.id)])), pricer(), minUnit(), isSec);
+    const value = E.collectionValue(Object.fromEntries(CARDS.filter(c => E.inSet(c, sv.set)).map(c => [c.id, ownedOf(c.id)])), pricer(), minUnit(), isSec, gradedInSet(sv.set));
     return `<div class="set-head">
         <button class="back" data-back="1" aria-label="返回">‹</button>
         ${ring(x.pct, 64, Math.round(x.pct * 100) + '%')}
@@ -785,8 +886,9 @@
       <div class="thumb" data-detail="${esc(c.id)}">${imgTag(c.id)}</div>
       <label class="grow" for="b-${esc(c.id)}"><b>${esc(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${altBadge(c)}
         <span class="bname">${esc(c.name || '')}</span></label>
-      <input id="b-${esc(c.id)}" class="bnum" data-bid="${esc(c.id)}" value="${n || ''}" placeholder="0"
-        inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="3" aria-label="${esc(c.id)} 數量">
+      <input id="b-${esc(c.id)}" class="bnum" data-bid="${esc(c.id)}" value="${n ? E.fmtQty(n) : ''}" placeholder="0"
+        inputmode="numeric" enterkeyhint="next" autocomplete="off" maxlength="4" aria-label="${esc(c.id)} 數量（可輸入 ∞）">
+      <button class="small inf${E.isInf(n) ? ' on' : ''}" data-binf="${esc(c.id)}" tabindex="-1" title="很多，不計數" aria-label="${esc(c.id)} 設為 ∞">∞</button>
     </div>`;
   }
   /** Rarities present in the current series (normal versions), in the usual order. */
@@ -810,7 +912,7 @@
     return `<div class="bulk-bar" role="group" aria-label="按稀有度批量設定">
       <select id="bk-rarity" aria-label="稀有度">${rars.map(r => `<option${r === sv.bulkRarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
       <span class="small muted">共 ${bulkIds(sv.bulkRarity).length} 款</span>
-      <select id="bk-mode" aria-label="方式"><option value="add"${sv.bulkMode === 'add' ? ' selected' : ''}>每款加</option><option value="set"${sv.bulkMode === 'set' ? ' selected' : ''}>每款設為</option></select>
+      <select id="bk-mode" aria-label="方式"><option value="add"${sv.bulkMode === 'add' ? ' selected' : ''}>每款加</option><option value="set"${sv.bulkMode === 'set' ? ' selected' : ''}>每款設為</option><option value="inf"${sv.bulkMode === 'inf' ? ' selected' : ''}>每款設為 ∞（不計數）</option></select>
       <input id="bk-n" type="number" min="0" max="99" step="1" value="${esc(sv.bulkN)}" inputmode="numeric" aria-label="張數" style="width:70px"> 張
       <button class="small primary" id="bk-apply">套用</button>
       ${undo ? `<button class="small" id="bk-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
@@ -819,13 +921,15 @@
   }
   async function applyBulk() {
     const ids = bulkIds(sv.bulkRarity);
-    const n = Math.max(0, Math.floor(Number(sv.bulkN) || 0));
+    const inf = sv.bulkMode === 'inf';
+    const n = inf ? E.INF : Math.max(0, Math.floor(Number(sv.bulkN) || 0));
     if (!ids.length) { toast('此系列沒有這個稀有度的卡'); return; }
     if (sv.bulkMode === 'add' && n === 0) { toast('請輸入要加的張數'); return; }
-    const label = `${sv.set} ${sv.bulkRarity} ${sv.bulkMode === 'add' ? '每款加 ' + n : '每款設為 ' + n} 張`;
-    const ok = await ask(`把 ${sv.set} 的 ${sv.bulkRarity}（共 ${ids.length} 款）${sv.bulkMode === 'add' ? `每款加 ${n} 張` : `每款設為 ${n} 張`}？`, { ok: '套用' });
+    const what = inf ? '每款設為 ∞（不計數）' : sv.bulkMode === 'add' ? `每款加 ${n} 張` : `每款設為 ${n} 張`;
+    const label = `${sv.set} ${sv.bulkRarity} ${what}`;
+    const ok = await ask(`把 ${sv.set} 的 ${sv.bulkRarity}（共 ${ids.length} 款）${what}？`, { ok: '套用' });
     if (!ok) return;
-    const res = E.bulkSet(state.owned, ids, sv.bulkMode, n);
+    const res = E.bulkSet(state.owned, ids, inf ? 'set' : sv.bulkMode, n);
     state.owned = res.owned;
     lastBulk = { set: sv.set, prev: res.prev, label };
     save();
@@ -862,12 +966,15 @@
       };
       let sumTimer;
       const commit = input => {
-        const clean = input.value.replace(/[^\d]/g, '').slice(0, 3);
+        // Digits, or ∞ (also typed as * or i: phone number pads have no ∞ key).
+        const inf = /[∞*iI]/.test(input.value);
+        const clean = inf ? '∞' : input.value.replace(/[^\d]/g, '').slice(0, 3);
         if (clean !== input.value) input.value = clean;
-        const id = input.dataset.bid, n = clean === '' ? 0 : Number(clean);
-        if (n === ownedOf(id)) return;
+        const id = input.dataset.bid, n = inf ? E.INF : (clean === '' ? 0 : Number(clean));
+        if (n === ownedOf(id) || (inf && E.isInf(ownedOf(id)))) return;
         setOwned(id, n);
         input.closest('.brow').classList.toggle('has', n > 0);
+        const ib = input.closest('.brow').querySelector('[data-binf]'); if (ib) ib.classList.toggle('on', inf);
         clearTimeout(sumTimer);
         sumTimer = setTimeout(() => { $('#sp-summary').innerHTML = setSummaryHtml(); }, 250);
       };
@@ -896,11 +1003,20 @@
         const miss = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)) && !ownedOf(c.id));
         return copyText(miss.map(c => `${c.id} ${c.rarity || ''} ${c.name || ''}`).join('\n'));
       }
+      const binf = e.target.closest('[data-binf]');
+      if (binf) {
+        setOwned(binf.dataset.binf, E.INF);
+        const row = binf.closest('.brow');
+        row.querySelector('.bnum').value = '∞'; row.classList.add('has'); binf.classList.add('on');
+        $('#sp-summary').innerHTML = setSummaryHtml();
+        return;
+      }
       const btn = e.target.closest('[data-act]'), tile = e.target.closest('.tile');
       if (!btn || !tile) return;
       const id = tile.dataset.id;
       if (btn.dataset.act === 'detail') return showDetail(id);
-      setOwned(id, ownedOf(id) + (btn.dataset.act === 'inc' ? 1 : -1));
+      if (btn.dataset.act === 'inf') setOwned(id, E.INF);
+      else if (!stepOwned(id, btn.dataset.act === 'inc' ? 1 : -1)) return;
       tile.outerHTML = tileHtml(byId[id] || { id }, E.reservedTotals(state.decks));
       $('#sp-summary').innerHTML = setSummaryHtml();
     };
@@ -909,6 +1025,15 @@
     };
     el.onchange = e => {
       if (e.target.dataset.bid) return;
+      if (e.target.dataset.tq) {
+        const n = readQty(e.target);
+        if (n === null) return;
+        setOwned(e.target.dataset.tq, n);
+        const tile = e.target.closest('.tile');
+        tile.outerHTML = tileHtml(byId[tile.dataset.id] || { id: tile.dataset.id }, E.reservedTotals(state.decks));
+        $('#sp-summary').innerHTML = setSummaryHtml();
+        return;
+      }
       if (e.target.id === 'bk-rarity') { sv.bulkRarity = e.target.value; return renderSets(); }
       if (e.target.id === 'bk-mode') { sv.bulkMode = e.target.value; return; }
       if (e.target.id === 'bk-n') { sv.bulkN = e.target.value; return; }
@@ -983,7 +1108,7 @@
     const today = new Date().toDateString();
     const todayCount = state.openLog.filter(x => new Date(x.at).toDateString() === today).length;
     $('#q-log').innerHTML = `<li class="muted">今日已加入 ${todayCount} 張</li>` + state.openLog.slice(0, 60).map((x, i) =>
-      `<li><div class="thumb">${imgTag(x.id)}</div><div class="grow"><b>${esc(x.id)}</b> ${esc(cardName(x.id))}<br><span class="muted">現有 ${ownedOf(x.id)} 張 · ${new Date(x.at).toLocaleTimeString()}</span></div><button class="small" data-undo="${i}">撤銷</button></li>`).join('');
+      `<li><div class="thumb">${imgTag(x.id)}</div><div class="grow"><b>${esc(x.id)}</b> ${esc(cardName(x.id))}<br><span class="muted">現有 ${E.fmtQty(ownedOf(x.id))} 張 · ${new Date(x.at).toLocaleTimeString()}</span></div><button class="small" data-undo="${i}">撤銷</button></li>`).join('');
   }
 
   // ============================================================== META
@@ -1351,7 +1476,7 @@
       const c = byId[id] || {};
       if (q && !(id.toLowerCase().includes(q) || (c.name || '').toLowerCase().includes(q))) continue;
       const pct = p.change && p.change.from ? (p.change.to - p.change.from) / p.change.from : 0;
-      rows.push({ id, c, n, p, total: p.hkd * n, pct, reserved: id === E.baseId(id) ? reserved[id] || 0 : 0 });
+      rows.push({ id, c, n, p, total: p.hkd * E.countable(n), pct, reserved: id === E.baseId(id) ? reserved[id] || 0 : 0 });
     }
     const by = { total: (a, b) => b.total - a.total, unit: (a, b) => b.p.hkd - a.p.hkd, up: (a, b) => b.pct - a.pct, down: (a, b) => a.pct - b.pct, id: (a, b) => a.id.localeCompare(b.id) }[vf.sort];
     rows.sort((a, b) => by(a, b) || a.id.localeCompare(b.id));
@@ -1360,15 +1485,16 @@
   function renderValue() {
     const el = $('#tab-value');
     const price = pricer();
-    const v = E.collectionValue(state.owned, price, minUnit(), isSec);
+    const v = E.collectionValue(state.owned, price, minUnit(), isSec, state.graded);
     const hasBot = Object.keys(PRICES.prices || {}).length > 0;
     el.innerHTML = `
       ${hasBot ? '' : `<div class="notice"><b>未有自動價格。</b> 請執行價格 BOT（悠々亭日版售價 × 匯率）：<pre>python3 bot/scrape_prices.py</pre>或在「設定」按「更新價格」。即使沒有 BOT，亦可在下方或卡的詳細頁自行輸入價格。</div>`}
       <div class="stats">
         <span>SEC/異圖/SP 總值 <b class="price">${total(v.altTotal)}</b>（${v.altCopies} 張） ${eyeButton()}</span>
         <span id="vf-big"></span>
-        <span>全部卡總值 ${total(v.total)} ${help('<b>為何分開計算？</b><br>普通卡及重印卡數量多，悠々亭售價遠高於實際可賣出的價錢，計入總值會令卡庫價值被高估。<br>「SEC/異圖/SP 總值」只計算 SEC、異圖及 SP 卡，較接近可變現的價值。<br>「HK$50 或以上及 SEC」計算所有單價達到下方金額的卡（包括 SR 等貴價普通卡），以及所有 SEC 卡（不論價錢），但不計白卡；金額可在下方修改。<br>「全部卡總值」則包括所有卡。', '價值說明')}</span>
+        <span>全部卡總值 ${total(v.total)} ${help('<b>為何分開計算？</b><br>普通卡及重印卡數量多，悠々亭售價遠高於實際可賣出的價錢，計入總值會令卡庫價值被高估。<br>「SEC/異圖/SP 總值」只計算 SEC、異圖及 SP 卡，較接近可變現的價值。<br>「HK$50 或以上及 SEC」計算所有單價達到下方金額的卡（包括 SR 等貴價普通卡），以及所有 SEC 卡（不論價錢），但不計白卡；金額可在下方修改。<br>「全部卡總值」則包括所有卡。<br>評級卡（PSA／CGC／BGS）按你輸入的價格計入以上全部總值。', '價值說明')}</span>
         <span>有價格 <b>${v.priced}</b> 張 · 未有價格 <b>${v.unpriced}</b> 張</span>
+        ${v.gradedCount ? `<span>評級卡 <b>${v.gradedCount}</b> 張 · ${total(v.gradedTotal)}${v.gradedUnpriced ? `（${v.gradedUnpriced} 張未有價格）` : ''}</span>` : ''}
         <span id="vf-sum"></span>
         <span>價格 ${PRICES.fetchedAt ? '更新於 ' + esc(PRICES.fetchedAt.slice(0, 10)) : '未更新'} · 1 JPY = ${rate()} HKD${Number(settings().factor) !== 1 ? ' · 係數 ×' + esc(settings().factor) : ''}</span>
       </div>
@@ -1380,8 +1506,20 @@
         <select id="vf-sort"><option value="total">總值最高優先</option><option value="unit">單價最高優先</option><option value="up">升幅最大優先</option><option value="down">跌幅最大優先</option><option value="id">按編號</option></select>
         <button id="vf-csv" class="small">匯出 CSV</button>
       </div>
+      ${state.graded.length ? `<h3>評級卡</h3><div class="vlist" id="vf-graded">${state.graded.slice()
+        .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0)).map(g => gradedRowHtml(g, true)).join('')}</div><h3>未評級的卡</h3>` : ''}
       <div class="vlist" id="vf-list"></div>
       <button class="more" id="vf-more">顯示更多</button>`;
+    const gl = $('#vf-graded');
+    if (gl) {
+      gl.addEventListener('change', e => { if (e.target.dataset.gp) { setGradedPrice(e.target.dataset.gp, e.target.value); renderValue(); } });
+      gl.addEventListener('click', async e => {
+        const d = e.target.closest('[data-gdel]');
+        if (d) { if (await deleteGraded(d.dataset.gdel)) renderValue(); return; }
+        const t = e.target.closest('[data-detail]');
+        if (t) showDetail(t.dataset.detail);
+      });
+    }
     $('#vf-min').value = settings().valuableMin;
     $('#vf-min').addEventListener('change', e => { settings().valuableMin = Number(e.target.value) || 0; save(); drawValue(); });
     for (const k of ['q', 'scope', 'kind', 'sort']) {
@@ -1412,7 +1550,7 @@
     const rows = valueRows();
     const sum = rows.reduce((s, r) => s + r.total, 0);
     $('#vf-sum').innerHTML = `此處 <b>${rows.length}</b> 款 · 總值 <b class="price">${total(sum)}</b>`;
-    const big = E.collectionValue(state.owned, pricer(), minUnit(), isSec);
+    const big = E.collectionValue(state.owned, pricer(), minUnit(), isSec, state.graded);
     $('#vf-big').innerHTML = `HK$${big.minUnit} 或以上及 SEC <b class="price">${total(big.bigTotal)}</b>（${big.bigCopies} 張）`;
     $('#vf-list').innerHTML = rows.slice(0, vf.limit).map(r => `<div class="vrow">
       <div class="thumb" data-detail="${esc(r.id)}">${imgTag(r.id)}</div>
@@ -1422,7 +1560,7 @@
           · <a href="${esc(shopUrl(r.id))}" target="_blank" rel="noopener">悠々亭</a>${r.reserved ? ` · 預留 ${r.reserved}` : ''}</div>
       </div>
       <div class="vnum"><div class="muted">單價</div><b class="price">${hk(r.p.hkd)}</b> ${changeHtml(r.p.change)}</div>
-      <div class="vnum"><div class="muted">× ${r.n}</div><b class="price">${hk(r.total)}</b></div>
+      <div class="vnum"><div class="muted">× ${E.fmtQty(r.n)}</div><b class="price">${hk(r.total)}</b></div>
       <div class="vnum"><input data-mp="${esc(r.id)}" type="number" min="0" step="1" placeholder="改價" aria-label="手動價 HK$" style="width:84px"></div>
     </div>`).join('') || '<p class="muted">沒有符合的卡。請降低價格門檻，或選擇「所有有價格的卡」。</p>';
     $('#vf-more').style.display = rows.length > vf.limit ? '' : 'none';
@@ -1540,7 +1678,7 @@
       const price = pricer();
       const rows = [['id', 'name', 'rarity', 'set', 'count', 'unit_hkd']].concat(Object.keys(state.owned).sort().map(id => {
         const c = byId[id] || {}; const p = price(id);
-        return [id, c.name || '', c.rarity || '', c.set || E.setOf(id), state.owned[id], p ? p.hkd : ''];
+        return [id, c.name || '', c.rarity || '', c.set || E.setOf(id), E.fmtQty(state.owned[id]), p ? p.hkd : ''];
       }));
       download('opcg-collection.csv', '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n'), 'text/csv');
     });

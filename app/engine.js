@@ -161,6 +161,32 @@
   }
 
   /** Copies owned per base card number. Parallels count only when includeParallels is on. */
+  // ------------------------------------------------------------ ∞ copies
+  /**
+   * "∞" = "I have plenty of this card, don't make me count" (common cards after opening boxes).
+   * Stored as a large number so every "do I have enough?" check just works; anything from
+   * INF_FROM up counts as ∞ (taking a few for a sold deck leaves it ∞).
+   */
+  const INF = 9999;
+  const INF_FROM = 9000;
+  function isInf(n) { return Number(n) >= INF_FROM; }
+  /** Copies to use in totals and values: ∞ counts as 1 (you have at least one; its number is unknown). */
+  function countable(n) { return isInf(n) ? 1 : Math.max(0, Number(n) || 0); }
+  function fmtQty(n) { return isInf(n) ? '∞' : String(Math.max(0, Number(n) || 0)); }
+  /** Typed count: "3", "", "∞", "inf", "*" or "i". null when it is not a count. */
+  function parseQty(text) {
+    const t = String(text == null ? '' : text).trim().toLowerCase();
+    if (t === '') return 0;
+    if (['∞', 'inf', '*', 'i'].includes(t)) return INF;
+    if (!/^\d+$/.test(t)) return null;
+    const n = Number(t);
+    return n >= INF_FROM ? INF : n;
+  }
+  /** Total copies in a collection, ∞ counted as 1. */
+  function totalCopies(owned) {
+    return Object.values(owned || {}).reduce((t, n) => t + countable(n), 0);
+  }
+
   function ownedTotals(owned, includeParallels) {
     const out = {};
     for (const [id, n] of Object.entries(owned || {})) {
@@ -248,6 +274,7 @@
       const ids = [e.id].concat(includeParallels
         ? Object.keys(next).filter(k => k !== e.id && baseId(k) === e.id).sort() : []);
       for (const id of ids) {
+        if (isInf(next[id])) { left = 0; break; } // plenty: nothing to count down
         const take = Math.min(left, next[id] || 0);
         if (take > 0) {
           next[id] -= take; left -= take;
@@ -341,18 +368,33 @@
    * every card overstates what the collection is worth. bigTotal counts every card (normal or not)
    * whose unit price is at least minUnit HKD, e.g. normal SR / SEC cards but no cheap commons, plus
    * any card alwaysCount(id) picks whatever its price (the app passes every SEC card).
+   * A count of ∞ is valued as one copy. Graded cards (PSA / CGC / BGS) with a price are added to
+   * every total: they are worth what their grade sells for, whatever the card.
    */
-  function collectionValue(owned, price, minUnit, alwaysCount) {
+  function collectionValue(owned, price, minUnit, alwaysCount, graded) {
     const min = Number(minUnit) || 50;
     let total = 0, priced = 0, unpriced = 0, altTotal = 0, altCopies = 0, bigTotal = 0, bigCopies = 0;
-    for (const [id, n] of Object.entries(owned || {})) {
+    let gradedTotal = 0, gradedCount = 0, gradedUnpriced = 0;
+    for (const g of graded || []) {
+      gradedCount++;
+      const v = Number(g.price);
+      if (g.price === '' || g.price == null || !(v >= 0)) { gradedUnpriced++; continue; }
+      gradedTotal += v;
+    }
+    for (const [id, raw] of Object.entries(owned || {})) {
+      const n = countable(raw);
       if (!(n > 0)) continue;
       const p = price(id);
       if (p) { total += p.hkd * n; priced += n; } else unpriced += n;
       if (/_p\d+$/i.test(id) || (alwaysCount && alwaysCount(id))) { altCopies += n; if (p) altTotal += p.hkd * n; }
       if (p && (p.hkd >= min || (alwaysCount && alwaysCount(id)))) { bigTotal += p.hkd * n; bigCopies += n; }
     }
-    return { total: round(total), priced, unpriced, altTotal: round(altTotal), altCopies, bigTotal: round(bigTotal), bigCopies, minUnit: min };
+    return {
+      total: round(total + gradedTotal), priced, unpriced,
+      altTotal: round(altTotal + gradedTotal), altCopies: altCopies + gradedCount,
+      bigTotal: round(bigTotal + gradedTotal), bigCopies: bigCopies + gradedCount, minUnit: min,
+      gradedTotal: round(gradedTotal), gradedCount, gradedUnpriced,
+    };
   }
 
   // ------------------------------------------------------------ search
@@ -457,7 +499,7 @@
       const n = owned[c.id] || 0;
       byRarity[key] = byRarity[key] || { total: 0, have: 0 };
       byRarity[key].total++; total++;
-      copies += n;
+      copies += countable(n);
       if (n > 0) { byRarity[key].have++; have++; }
     }
     return { code, total, have, copies, pct: total ? have / total : 0, byRarity };
@@ -471,10 +513,10 @@
   function bulkSet(owned, ids, mode, n) {
     const next = Object.assign({}, owned);
     const prev = {};
-    n = Math.max(0, Math.floor(Number(n) || 0));
+    n = isInf(n) ? INF : Math.max(0, Math.floor(Number(n) || 0));
     for (const id of ids) {
       const old = next[id] || 0;
-      const val = mode === 'set' ? n : old + n;
+      const val = mode === 'set' ? n : (isInf(old) || isInf(n) ? INF : old + n);
       prev[id] = old;
       if (val > 0) next[id] = val; else delete next[id];
     }
@@ -506,8 +548,31 @@
     return s.value ? 'X' + s.value : '';
   }
 
+  // ------------------------------------------------------------ graded cards
+  /** Grading companies and the grades they give, best first. */
+  const GRADERS = {
+    PSA: ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'],
+    BGS: ['10 Black Label', '10 Pristine', '9.5', '9', '8.5', '8', '7.5', '7', '6'],
+    CGC: ['10 Pristine', '10', '9.5', '9', '8.5', '8', '7.5', '7', '6'],
+  };
+  function gradeOptions(company) { return GRADERS[company] || []; }
+  /**
+   * Where to look up what a graded copy sells for: sold eBay listings and PriceCharting, searched
+   * by card number and grade (e.g. "OP01-120 PSA 10"). Prices there are in USD.
+   */
+  function gradedSearchUrls(id, company, grade) {
+    const q = `${baseId(id)} ${company} ${grade}`.trim();
+    const enc = encodeURIComponent(q).replace(/%20/g, '+');
+    return {
+      query: q,
+      ebay: `https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Sold=1&LH_Complete=1`,
+      pricecharting: `https://www.pricecharting.com/search-products?q=${enc}&type=prices`,
+    };
+  }
+
   const api = {
-    normId, baseId, normRarity, variantLabel, seriesCode, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
+    normId, baseId, normRarity, variantLabel, seriesCode, INF, isInf, countable, fmtQty, parseQty, totalCopies,
+    GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
     parseQuery, matchCard, SET_GROUPS, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
