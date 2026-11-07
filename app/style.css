@@ -54,8 +54,15 @@ pre { padding: 10px; overflow-x: auto; white-space: pre-wrap; }
 .tile .name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qty { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 6px 8px 8px; margin-top: auto; }
 .qty button { width: 34px; height: 30px; padding: 0; font-size: 18px; line-height: 1; }
-.qty .n { font-size: 18px; font-weight: 700; min-width: 2ch; text-align: center; }
+.qty .n { font-size: 18px; font-weight: 700; width: 3.2em; min-width: 0; text-align: center; padding: 3px 2px; }
 .qty .n.zero { color: var(--muted); font-weight: 400; }
+.qty button.inf, .own-row .cnt button.inf { width: 30px; font-size: 16px; color: var(--muted); }
+button.inf.on { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.own-row.graded { flex-wrap: wrap; align-items: flex-start; }
+.own-row.graded .thumb { width: 40px; cursor: zoom-in; }
+.own-row.graded .gp { width: 90px; }
+.grade-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-top: 8px; border-top: 1px dashed var(--line); margin-top: 6px; }
+.qin { width: 3.4em; text-align: center; font-weight: 700; padding: 4px 2px; }
 .sub { font-size: 11px; color: var(--muted); padding: 0 8px; min-height: 15px; }
 .more { display: block; margin: 16px auto; }
 
@@ -202,7 +209,9 @@ table.list td, table.list th { border-bottom: 1px solid var(--line); padding: 4p
 
 /* card page */
 .cd { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; }
-@media (max-width: 680px) { .cd { grid-template-columns: 1fr; } .cd-img { max-width: 280px; margin: 0 auto; } }
+@media (max-width: 680px) { .cd { grid-template-columns: minmax(0, 1fr); } .cd-img { max-width: 280px; margin: 0 auto; } }
+/* Many versions (OP01-120 has 7): the thumbnail row scrolls instead of widening the whole page. */
+.cd-left { min-width: 0; }
 .cd-img { position: relative; aspect-ratio: 600 / 838; background: var(--chip); border-radius: 12px; overflow: hidden; }
 .cd-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .alts { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; }
@@ -228,7 +237,8 @@ table.list td, table.list th { border-bottom: 1px solid var(--line); padding: 4p
 .own-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); }
 .own-row:first-of-type { border-top: none; }
 .own-row.on { font-weight: 600; }
-.own-row .cnt { display: flex; align-items: center; gap: 8px; }
+.own-row .cnt { display: flex; align-items: center; gap: 6px; flex: none; }
+@media (max-width: 480px) { .own-row { flex-wrap: wrap; } .own-row .cnt { margin-left: auto; } }
 .own-row .cnt button { width: 32px; height: 30px; padding: 0; font-size: 16px; }
 .effect { line-height: 1.7; }
 .kw { display: inline-block; border-radius: 6px; padding: 0 6px; margin: 0 2px; font-size: 12px; font-weight: 700; color: #fff; background: #6b7078; }
