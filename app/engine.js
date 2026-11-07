@@ -483,7 +483,20 @@
 
   /** Is a card part of a set (its own number, or listed in that series on the official site)? */
   function inSet(card, code) {
+    // A 異圖 / SP / 重印 belongs only to the series it was released in (the official list names it),
+    // e.g. EB01-009_r1 is a PRB02 card and is not shown under EB01. Normal versions keep their number's
+    // series as well as any series that lists them.
+    if (card.id !== baseId(card.id) && (card.series || []).length) return card.series.some(s => seriesCode(s) === code);
     return setOf(card.id) === code || (card.series || []).some(s => s.code === code);
+  }
+
+  /** Series a card was released in: for a 異圖 / SP / 重印 the one the official list names, else its number's. */
+  function releasedIn(card) {
+    if (card.id !== baseId(card.id)) {
+      const codes = (card.series || []).map(seriesCode).filter(Boolean);
+      if (codes.length) return codes[0];
+    }
+    return setOf(card.id);
   }
 
   /**
@@ -577,7 +590,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;
