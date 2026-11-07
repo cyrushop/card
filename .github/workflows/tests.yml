@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install Pillow (used to compress pictures online)
+        run: pip install --no-cache-dir pillow==11.3.0
+
       - name: Bot tests
         run: python -I tests/test_bots.py
 

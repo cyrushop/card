@@ -10,6 +10,7 @@ Chinese) card list and writes data/cards.json + cards.js for the app.
 Standard library only. Waits about 1 s between requests.
 """
 import argparse
+import io
 import json
 import os
 import re
@@ -172,23 +173,34 @@ def download_images(cards, delay):
             manifest = json.load(f)
     except (OSError, ValueError):
         manifest = {}
-    new = changed = 0
+    new = changed = shrunk = 0
+    width = image_width()
     todo = [c for c in cards if c.get("image")]
     for i, c in enumerate(todo):
         fname = image_name(c)
         path = os.path.join(img_dir, fname)
         have = os.path.exists(path) and os.path.getsize(path) > 0
-        if have and manifest.get(c["id"], c["image"]) == c["image"]:
+        same_url = manifest.get(c["id"], c["image"]) == c["image"]
+        if have and same_url:
             manifest.setdefault(c["id"], c["image"])
             continue
+        original = os.path.join(img_dir, image_name(c, original=True))
+        if width and not have and same_url and original != path and os.path.exists(original):
+            # Compression was switched on after the originals were downloaded: shrink them in place.
+            try:
+                with open(original, "rb") as f:
+                    _write_atomic(path, shrink(f.read(), width))
+                os.remove(original)
+                manifest.setdefault(c["id"], c["image"])
+                shrunk += 1
+                continue
+            except Exception as e:
+                print(f"  ! shrink {c['id']}: {e}", file=sys.stderr)
         try:
             data = net.get(c["image"], delay=delay, binary=True, referer=BASE)
-            # Write to a side file and rename it into place, so a run that is stopped halfway
-            # (computer asleep, window closed) never leaves a cut-off picture that later runs keep.
-            part = path + ".part"
-            with open(part, "wb") as f:
-                f.write(data)
-            os.replace(part, path)
+            if width:
+                data = shrink(data, width)
+            _write_atomic(path, data)
             manifest[c["id"]] = c["image"]
             changed += have
             new += not have
@@ -200,12 +212,58 @@ def download_images(cards, delay):
                 json.dump(manifest, f)
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f)
+    if shrunk:
+        print(f"Images: {shrunk} existing pictures compressed to WebP")
     print(f"Images: {new} new, {changed} updated, in {img_dir}")
     return new, changed
 
 
-def image_name(card):
+def _write_atomic(path, data):
+    # Write to a side file and rename it into place, so a run that is stopped halfway
+    # (computer asleep, window closed) never leaves a cut-off picture that later runs keep.
+    part = path + ".part"
+    with open(part, "wb") as f:
+        f.write(data)
+    os.replace(part, path)
+
+
+_WIDTH = None
+
+
+def image_width():
+    """Width to shrink pictures to, as WebP, from OPCG_IMAGE_WIDTH (the online version sets 400:
+    about a fifth of the size, which keeps storage and data transfer low). 0 keeps the originals.
+    Needs Pillow; without it the originals are kept."""
+    global _WIDTH
+    if _WIDTH is None:
+        try:
+            _WIDTH = max(0, int(os.environ.get("OPCG_IMAGE_WIDTH") or 0))
+        except ValueError:
+            _WIDTH = 0
+        if _WIDTH:
+            try:
+                import PIL.Image  # noqa: F401
+            except ImportError:
+                print("  (OPCG_IMAGE_WIDTH is set but Pillow is not installed: keeping the original pictures)")
+                _WIDTH = 0
+    return _WIDTH
+
+
+def shrink(data, width):
+    """A picture made at most `width` pixels wide and saved as WebP."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    if im.width > width:
+        im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+    out = io.BytesIO()
+    im.save(out, "WEBP", quality=75, method=4)
+    return out.getvalue()
+
+
+def image_name(card, original=False):
     ext = os.path.splitext(urlparse(card.get("image") or "").path)[1] or ".png"
+    if image_width() and not original:
+        ext = ".webp"
     return re.sub(r"[^A-Za-z0-9_\-]", "_", card["id"]) + ext
 
 
