@@ -170,8 +170,10 @@
   const INF = 9999;
   const INF_FROM = 9000;
   function isInf(n) { return Number(n) >= INF_FROM; }
-  /** Copies to use in totals and values: ∞ counts as 1 (you have at least one; its number is unknown). */
-  function countable(n) { return isInf(n) ? 1 : Math.max(0, Number(n) || 0); }
+  /** Copies ∞ stands for in totals and values: a playset of 4 (the real number is not counted). */
+  const INF_COPIES = 4;
+  /** Copies to use in totals and values: ∞ counts as a playset of 4. */
+  function countable(n) { return isInf(n) ? INF_COPIES : Math.max(0, Number(n) || 0); }
   function fmtQty(n) { return isInf(n) ? '∞' : String(Math.max(0, Number(n) || 0)); }
   /** Typed count: "3", "", "∞", "inf", "*" or "i". null when it is not a count. */
   function parseQty(text) {
@@ -368,7 +370,7 @@
    * every card overstates what the collection is worth. bigTotal counts every card (normal or not)
    * whose unit price is at least minUnit HKD, e.g. normal SR / SEC cards but no cheap commons, plus
    * any card alwaysCount(id) picks whatever its price (the app passes every SEC card).
-   * A count of ∞ is valued as one copy. Graded cards (PSA / CGC / BGS) with a price are added to
+   * A count of ∞ is valued as a playset of 4. Graded cards (PSA / CGC / BGS) with a price are added to
    * every total: they are worth what their grade sells for, whatever the card.
    */
   function collectionValue(owned, price, minUnit, alwaysCount, graded) {
@@ -571,7 +573,7 @@
   }
 
   const api = {
-    normId, baseId, normRarity, variantLabel, seriesCode, INF, isInf, countable, fmtQty, parseQty, totalCopies,
+    normId, baseId, normRarity, variantLabel, seriesCode, INF, INF_COPIES, isInf, countable, fmtQty, parseQty, totalCopies,
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
