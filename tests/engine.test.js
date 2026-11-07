@@ -305,9 +305,9 @@ t('∞ copies: typed, counted, sold and bulk-set', () => {
   assert.strictEqual(E.fmtQty(E.INF - 4), '∞', 'a few taken away is still plenty');
   assert.strictEqual(E.fmtQty(3), '3');
   const owned = { 'OP08-002': E.INF, 'OP08-003': 2 };
-  assert.strictEqual(E.totalCopies(owned), 3, '∞ counts as one copy in totals');
+  assert.strictEqual(E.totalCopies(owned), 6, '∞ counts as a playset of 4 in totals');
   const price = E.makePricer({ bot: { 'OP08-002': { jpy: 100 } }, rate: 0.05 });
-  assert.strictEqual(E.collectionValue(owned, price, 50).total, 5, '∞ is valued as one copy');
+  assert.strictEqual(E.collectionValue(owned, price, 50).total, 20, '∞ is valued as a playset of 4');
   // A deck needing 4 is complete, and selling it leaves ∞.
   const st = E.deckStatus([{ id: 'OP08-002', count: 4 }], owned);
   assert.strictEqual(st.missing, 0);
@@ -317,7 +317,7 @@ t('∞ copies: typed, counted, sold and bulk-set', () => {
   assert.deepStrictEqual(Object.values(b.owned).map(E.fmtQty), ['∞', '∞']);
   assert.ok(E.isInf(E.bulkSet(b.owned, ['OP08-005'], 'add', 2).owned['OP08-005']));
   assert.deepStrictEqual(E.undoBulk(b.owned, b.prev), { 'OP08-005': 2 });
-  assert.strictEqual(E.setProgress([{ id: 'OP08-002', rarity: 'C' }], owned, 'OP08', false).copies, 1);
+  assert.strictEqual(E.setProgress([{ id: 'OP08-002', rarity: 'C' }], owned, 'OP08', false).copies, 4);
 });
 
 t('graded cards: added to every total, search links', () => {
