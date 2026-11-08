@@ -103,6 +103,25 @@ gcloud run jobs executions list --job opcg-update --region asia-east2
 
 **更新程式**：在 Cloud Shell 的 `card` 資料夾執行 `git pull`，再執行同一條部署指令即可，資料保存在 bucket 內，不受影響。
 
+## 自動部署（合併後由 GitHub 部署）
+
+設定後，`main` 有新程式並通過自動測試，GitHub 便會自動部署網上服務及更新工作，不用再在 Cloud Shell 執行部署指令。GitHub 以短期憑證登入（Workload Identity Federation），**不會建立或儲存任何金鑰**，而且 Google 只接受來自 `cyrushop/card` 的 `main` 分支的請求。
+
+1. 在 Cloud Shell 的 `card` 資料夾執行一次（需先完成過一次 `deploy/deploy.sh`）：
+
+   ```bash
+   git pull origin main && PROJECT=你的專案ID ./deploy/setup-github-deploy.sh
+   ```
+
+2. 腳本最後會顯示 4 行設定（專案 ID、專案編號、地區、服務名稱，不是密碼）。把它們加入程式庫的 `deploy/github-deploy.env`（可交給 Claude 開 PR），合併後即啟用。
+
+之後：
+* 每次合併到 `main` 並通過測試，便會自動部署（GitHub →「Actions」→「deploy」可看記錄）。
+* 手動執行：GitHub →「Actions」→「deploy」→「Run workflow」：`deploy` 重新部署；`update` 立即執行一次完整更新（卡表、卡圖、價格）。
+* 存取設定（IAP、允許名單、OAuth 用戶端）、儲存空間及排程不會被自動部署改動；要改動這些，仍使用 `deploy/deploy.sh`。
+
+部署帳戶 `github-deploy` 的權限：Cloud Run Source Developer、Cloud Run Developer、Service Usage Consumer、Logs Viewer，以及可以代表服務帳戶及建置帳戶執行（Service Account User）。
+
 ## 把電腦上的卡庫搬到網上版本
 
 方法一（建議）：在電腦版「設定」按「匯出備份（JSON）」，然後在網上版「設定」按「匯入備份」。

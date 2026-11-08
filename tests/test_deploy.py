@@ -5,6 +5,13 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "..", "deploy", "deploy.sh")
+SETUP = os.path.join(HERE, "..", "deploy", "setup-github-deploy.sh")
+WORKFLOW = os.path.join(HERE, "..", ".github", "workflows", "deploy.yml")
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
 
 
 class DeployScript(unittest.TestCase):
@@ -56,6 +63,47 @@ class DeployScript(unittest.TestCase):
         line_end = self.text.find("rm -f", start)
         self.assertIn("|| echo", self.text[start:line_end], "a failed cleanup setting must not stop the deploy")
         self.assertIn('"keepCount": 2', self.text)
+
+
+class GitHubDeploy(unittest.TestCase):
+    """Automatic deploys from GitHub: keyless, main only, idle until set up."""
+
+    def setUp(self):
+        self.setup, self.flow = read(SETUP), read(WORKFLOW)
+
+    def test_only_this_repository_and_its_main_branch_can_deploy(self):
+        self.assertIn("assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'", self.setup)
+        self.assertIn('REPO="${REPO:-cyrushop/card}"', self.setup)
+        self.assertIn("attribute.repository/${REPO}", self.setup)
+
+    def test_no_long_lived_key_is_made(self):
+        self.assertNotIn("keys create", self.setup)
+        self.assertNotIn("credentials_json", self.flow)
+        self.assertIn("id-token: write", self.flow)
+
+    def test_deploys_only_after_tests_pass_on_a_push_to_main(self):
+        self.assertIn("workflows: [tests]", self.flow)
+        self.assertIn("branches: [main]", self.flow)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", self.flow)
+        self.assertIn("github.event.workflow_run.event == 'push'", self.flow)
+        # The tests workflow it waits for must really be called "tests".
+        self.assertTrue(read(os.path.join(HERE, "..", ".github", "workflows", "tests.yml")).startswith("name: tests\n"))
+
+    def test_does_nothing_until_the_settings_file_exists(self):
+        self.assertIn("if [ ! -f deploy/github-deploy.env ]", self.flow)
+        gated = [l for l in self.flow.splitlines() if l.strip().startswith("- uses: google-github-actions/")
+                 or l.strip().startswith("- name: Deploy") or l.strip().startswith("- name: Run a full update")]
+        self.assertEqual(len(gated), 4)
+        self.assertEqual(self.flow.count("if: steps.cfg.outputs.ready == 'true'"), 5)
+
+    def test_names_match_the_setup_script(self):
+        self.assertIn('POOL="github"', self.setup)
+        self.assertIn('PROVIDER="card-repo"', self.setup)
+        self.assertIn('SA_NAME="github-deploy"', self.setup)
+        self.assertIn("workloadIdentityPools/github/providers/card-repo", self.flow)
+        self.assertIn("service_account: github-deploy@", self.flow)
+        for key in ("GCP_PROJECT=", "GCP_PROJECT_NUMBER=", "GCP_REGION=", "GCP_SERVICE="):
+            self.assertIn(key, self.setup)
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ jobs:
           bash -n OPCG-Start.command
           bash -n OPCG-Phone.command
           bash -n deploy/deploy.sh
+          bash -n deploy/setup-github-deploy.sh
 
   app:
     name: App engine tests
