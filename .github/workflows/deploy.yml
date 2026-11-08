@@ -48,13 +48,13 @@ jobs:
           grep -E '^GCP_[A-Z_]+=[A-Za-z0-9._-]+$' deploy/github-deploy.env >> "$GITHUB_ENV"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         if: steps.cfg.outputs.ready == 'true'
         with:
           workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/card-repo
           service_account: github-deploy@${{ env.GCP_PROJECT }}.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
         if: steps.cfg.outputs.ready == 'true'
 
       - name: Deploy the service from source
@@ -73,7 +73,10 @@ jobs:
 
       - name: Run a full update now
         if: steps.cfg.outputs.ready == 'true' && inputs.action == 'update'
+        # --wait: this run stays open until the update finishes (it can take a few hours the first
+        # time), so its result here tells whether the update worked.
+        timeout-minutes: 200
         run: |
           gcloud run jobs execute "${GCP_SERVICE}-update" --region "$GCP_REGION" --project "$GCP_PROJECT" \
-            --args="-I,bot/auto_update.py,--force"
-          echo "Started a full update (cards, pictures, prices)." >> "$GITHUB_STEP_SUMMARY"
+            --args="-I,bot/auto_update.py,--force" --wait
+          echo "Full update (cards, pictures, prices) finished." >> "$GITHUB_STEP_SUMMARY"
