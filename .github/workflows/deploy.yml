@@ -1,0 +1,79 @@
+name: deploy
+
+# Deploys the online version (Cloud Run) after the tests pass on main, and can be run by hand.
+# It does nothing until deploy/github-deploy.env exists: run deploy/setup-github-deploy.sh once in
+# Cloud Shell, then add the values it prints to that file (see deploy/README.md).
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy = 部署最新程式；update = 執行一次完整更新（卡表、卡圖、價格）"
+        type: choice
+        options: [deploy, update]
+        default: deploy
+
+permissions:
+  contents: read
+  id-token: write # short-lived Google credentials, no stored key
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    # Only after a successful test run of a push to main (never for pull requests), or by hand.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Read deploy settings
+        id: cfg
+        run: |
+          if [ ! -f deploy/github-deploy.env ]; then
+            echo "deploy/github-deploy.env not found: automatic deploy is not set up yet, nothing to do."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          grep -E '^GCP_[A-Z_]+=[A-Za-z0-9._-]+$' deploy/github-deploy.env >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github/providers/card-repo
+          service_account: github-deploy@${{ env.GCP_PROJECT }}.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.cfg.outputs.ready == 'true'
+
+      - name: Deploy the service from source
+        if: steps.cfg.outputs.ready == 'true' && (github.event_name == 'workflow_run' || inputs.action == 'deploy')
+        # Only the code changes: access control, IAP, storage, scaling and variables set by
+        # deploy/deploy.sh stay as they are.
+        run: gcloud run deploy "$GCP_SERVICE" --source . --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
+
+      - name: Point the update job at the same program
+        if: steps.cfg.outputs.ready == 'true' && (github.event_name == 'workflow_run' || inputs.action == 'deploy')
+        run: |
+          image="$(gcloud run services describe "$GCP_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT" \
+            --format='value(spec.template.spec.containers[0].image)')"
+          gcloud run jobs update "${GCP_SERVICE}-update" --image "$image" --region "$GCP_REGION" --project "$GCP_PROJECT" --quiet
+          echo "Deployed $image" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run a full update now
+        if: steps.cfg.outputs.ready == 'true' && inputs.action == 'update'
+        run: |
+          gcloud run jobs execute "${GCP_SERVICE}-update" --region "$GCP_REGION" --project "$GCP_PROJECT" \
+            --args="-I,bot/auto_update.py,--force"
+          echo "Started a full update (cards, pictures, prices)." >> "$GITHUB_STEP_SUMMARY"
