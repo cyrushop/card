@@ -360,3 +360,9 @@ h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
 .box-edit .box-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
 .box-edit textarea { width: 100%; box-sizing: border-box; margin: 6px 0; font: inherit; }
 .box-edit details { margin: 6px 0 8px; }
+
+/* booster series: R / SR / SEC short of 4 copies */
+.short-note { display: block; font-size: 12px; }
+.short-note .warn, .short-sum .warn { color: var(--accent); }
+.short-note .ok { color: var(--ok); }
+.short-sum { margin: -4px 0 10px; }
