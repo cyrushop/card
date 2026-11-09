@@ -26,7 +26,7 @@
   const variantsOf = {};
   for (const c of CARDS) (variantsOf[E.baseId(c.id)] = variantsOf[E.baseId(c.id)] || []).push(c.id);
 
-  const setRank = s => ({ OP: 0, EB: 1, PRB: 2, ST: 3, P: 4 }[s.replace(/\d+/g, '')] ?? 5);
+  const setRank = s => ({ OP: 0, EB: 1, PRB: 2, ST: 3, P: 4, DON: 5 }[s.replace(/\d+/g, '')] ?? 6);
   // Newest first (for drop-downs).
   function setSort(a, b) { return setRank(a) - setRank(b) || b.localeCompare(a, 'en', { numeric: true }); }
   const SETS = Array.from(new Set(CARDS.map(c => c.set || E.setOf(c.id)).filter(Boolean))).sort(setSort);
@@ -39,7 +39,7 @@
   const COLOR_HEX = { '紅': 'red', '红': 'red', Red: 'red', '綠': 'green', '绿': 'green', Green: 'green', '藍': 'blue', '蓝': 'blue', Blue: 'blue',
     '紫': 'purple', Purple: 'purple', '黑': 'black', Black: 'black', '黃': 'yellow', '黄': 'yellow', Yellow: 'yellow' };
   const COLORS = Array.from(new Set(CARDS.flatMap(c => E.cardColors(c)))).filter(Boolean);
-  const CATS = { LEADER: '領航', CHARACTER: '角色', EVENT: '事件', STAGE: '場地' };
+  const CATS = { LEADER: '領航', CHARACTER: '角色', EVENT: '事件', STAGE: '場地', DON: 'DON!!' };
   const RARITIES = Array.from(new Set(CARDS.map(c => c.rarity).filter(Boolean)));
 
   // ----------------------------------------------------------- state
@@ -51,7 +51,7 @@
   let saveTimer = null;
 
   function blankState() {
-    return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [], graded: [],
+    return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [], graded: [], boxes: {},
       settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50,
         autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true } } };
   }
@@ -64,6 +64,8 @@
       decks: Array.isArray(s.decks) ? s.decks : [],
       manualPrices: s.manualPrices && typeof s.manualPrices === 'object' ? s.manualPrices : {},
       graded: Array.isArray(s.graded) ? s.graded.filter(g => g && g.id && g.company) : [],
+      // Contents of one sealed box per starter deck (series code -> { card id: copies }), set by the user.
+      boxes: s.boxes && typeof s.boxes === 'object' && !Array.isArray(s.boxes) ? s.boxes : {},
       settings: Object.assign(b.settings, s.settings || {}),
       openLog: Array.isArray(s.openLog) ? s.openLog.slice(0, 200) : [],
       savedAt: s.savedAt,
@@ -283,7 +285,7 @@
   }
   function shopUrl(id) {
     const p = PRICES.prices[id];
-    return (p && p.url) || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
+    return (p && p.url) || (byId[id] || {}).source || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
   }
   /** Badge after a card's rarity in lists: 異圖 / 重印. SP cards need none: their rarity already reads SP. */
   function altBadge(c) {
@@ -609,11 +611,11 @@
       </div>
       <div class="cd-right">
         <div class="chips">${c.category ? `<span class="chip">${esc(CATS[c.category] || c.categoryRaw || c.category)}</span>` : ''}<span class="chip">${shownId(id)}</span>
-          ${c.rarity ? `<span class="chip strong">${esc(c.rarity)}</span>` : ''}${setCode ? `<button class="chip link" data-goset="${esc(setCode)}">${esc(setCode)} ›</button>` : ''}</div>
+          ${c.rarity && c.rarity !== c.category ? `<span class="chip strong">${esc(c.rarity)}</span>` : ''}${setCode ? `<button class="chip link" data-goset="${esc(setCode)}">${esc(setCode)} ›</button>` : ''}</div>
         <h2>${esc(c.name || id)}</h2>
         ${c.feature ? `<div class="muted">${esc(c.feature)}</div>` : ''}
         <div class="stats-tiles">
-          ${isLeader ? tile('生命值', c.life) : tile('費用', c.cost)}${tile('力量值', c.power)}${tile('反擊值', c.counter == null ? (c.category ? '-' : null) : c.counter)}
+          ${isLeader ? tile('生命值', c.life) : tile('費用', c.cost)}${tile('力量值', c.power)}${tile('反擊值', c.counter == null ? (c.category && c.category !== 'DON' ? '-' : null) : c.counter)}
           ${tile('顏色', c.color, c.color ? dots(c) + ' ' + esc(c.color) : '')}${tile('屬性', c.attribute)}${tile('擴張記號', c.block)}
         </div>
         <div class="box">
@@ -821,8 +823,12 @@
   }
 
   // =============================================================== SETS
-  const sv = { set: '', parallels: false, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
-    bulkRarity: 'C', bulkMode: 'add', bulkN: 1 };
+  // Starter decks are bought whole, 異圖 and SP included, so their pages show those versions by default.
+  const sv = { set: '', parallels: false, parallelsST: true, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
+    bulkRarity: 'C', bulkMode: 'add', bulkN: 1, boxN: 1, boxEdit: false };
+  const isStarter = code => E.setGroup(code) === '起始牌組';
+  /** Whether 異圖 / SP count for a series: starter decks have their own setting. */
+  const parOf = code => (isStarter(code) ? sv.parallelsST : sv.parallels);
   let lastBulk = null; // { set, prev, label } for undo
   try { sv.mode = localStorage.getItem('opcg-setmode') || 'grid'; } catch (e) { /* ignore */ }
   function renderSets() {
@@ -836,7 +842,7 @@
     // is empty while parallels are hidden, and a category with nothing in it is left out too.
     const groups = {};
     for (const code of SET_CODES) {
-      if (!E.setProgress(CARDS, state.owned, code, sv.parallels).total) continue;
+      if (!E.setProgress(CARDS, state.owned, code, parOf(code)).total) continue;
       (groups[E.setGroup(code)] = groups[E.setGroup(code)] || []).push(code);
     }
     // Every category on one page, in the usual order: 補充包, 特殊補充包, 高級補充包, 起始牌組, 推廣卡, 其他.
@@ -847,9 +853,9 @@
     if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     el.innerHTML = `
       <div class="jumpbar" role="navigation" aria-label="跳到分類">${names.map((g, i) => `<button class="chip link" data-jump="grp-${i}">${esc(g)} <span class="muted">${groups[g].length}</span></button>`).join('')}</div>
-      <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同異圖及 SP 一併計算</label>
+      <label class="muted small"><input type="checkbox" id="sv-par"${sv.parallels ? ' checked' : ''}> 連同異圖及 SP 一併計算（起始牌組${sv.parallelsST ? '已包括' : '未包括'}，可在各起始牌組頁更改）</label>
       ${names.map((g, gi) => {
-        const prog = groups[g].map(code => E.setProgress(CARDS, state.owned, code, sv.parallels)).filter(x => x.total);
+        const prog = groups[g].map(code => E.setProgress(CARDS, state.owned, code, parOf(code))).filter(x => x.total);
         const tot = prog.reduce((t, x) => t + x.total, 0), have = prog.reduce((t, x) => t + x.have, 0);
         return `<div class="panel grp-panel" id="grp-${gi}"><div class="group-head">${ring(tot ? have / tot : 0, 46, Math.round(tot ? have / tot * 100 : 0) + '%')}<h2>${esc(g)}</h2>
           <span class="muted">${have}/${tot} 款</span></div>
@@ -897,7 +903,7 @@
     }
     // Choosing SP / 異圖 / 重印 shows those versions even when "包括異圖及 SP" is off.
     const pickVersion = VERSION_KINDS.includes(sv.rarity);
-    let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || pickVersion || c.id === E.baseId(c.id)));
+    let list = CARDS.filter(c => E.inSet(c, sv.set) && (parOf(sv.set) || pickVersion || c.id === E.baseId(c.id)));
     if (sv.rarity === 'SP') list = list.filter(c => c.rarity === 'SP');
     else if (pickVersion) list = list.filter(c => E.variantLabel(c) === sv.rarity);
     else if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
@@ -911,7 +917,7 @@
   const RAR_ORDER = ['L', 'C', 'UC', 'R', 'SR', 'SEC', 'SP', 'TR', 'P', '異圖', '重印'];
   const VERSION_KINDS = ['SP', '異圖', '重印'];
   function setSummaryHtml() {
-    const x = E.setProgress(CARDS, state.owned, sv.set, sv.parallels);
+    const x = E.setProgress(CARDS, state.owned, sv.set, parOf(sv.set));
     const rars = Object.keys(x.byRarity).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
     const value = E.collectionValue(Object.fromEntries(CARDS.filter(c => E.inSet(c, sv.set)).map(c => [c.id, ownedOf(c.id)])), pricer(), minUnit(), isSec, gradedInSet(sv.set));
     return `<div class="set-head">
@@ -978,6 +984,83 @@
     toast(`已更新 ${ids.length} 款；如有錯可按「撤銷」`);
     renderSets();
   }
+  // ------------------------------------------------ starter decks: whole boxes
+  const boxRecipe = code => state.boxes[code] && E.recipeTotal(state.boxes[code]) ? state.boxes[code] : null;
+  function boxLabel(n) {
+    n = Math.trunc(Number(n) || 0);
+    return n > 0 ? `加入 ${n} 盒` : n < 0 ? `減去 ${-n} 盒` : '加入';
+  }
+  function boxBarHtml() {
+    const r = boxRecipe(sv.set);
+    const undo = lastBulk && lastBulk.set === sv.set && lastBulk.box;
+    return `<div class="bulk-bar box-bar" role="group" aria-label="按盒加減">
+      <b>按盒加減</b>
+      ${r ? `<span class="small muted">一盒 ${E.recipeTotal(r)} 張 · ${Object.keys(r).length} 款</span>
+        <span class="boxn"><button class="small" data-boxstep="-1" aria-label="少一盒">−</button><input id="bx-n" type="number" step="1" value="${esc(sv.boxN)}" aria-label="盒數（減少請輸入負數）"><button class="small" data-boxstep="1" aria-label="多一盒">+</button> 盒</span>
+        <button class="small primary" id="bx-apply">${esc(boxLabel(sv.boxN))}</button>`
+        : '<span class="small muted">未設定一盒內容：設定一次後，之後只需填盒數。</span>'}
+      <button class="small${r ? '' : ' primary'}" id="bx-edit" aria-expanded="${sv.boxEdit}">${r ? '修改一盒內容' : '設定一盒內容'}</button>
+      ${undo ? `<button class="small" id="bx-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
+      ${help('<b>按盒加減</b><br>起始牌組一盒一盒買：填盒數，按「加入」，盒內每張卡（包括異圖及 SP）會按一盒的張數自動加入。<br>加多了：填負數（例如 -1）或按「−」，再按「減去」。張數不會少於 0；∞ 的卡不變。<br>每款起始牌組的一盒內容只需設定一次（官方卡表沒有每張卡的張數）：逐張填，或貼上卡表（例如 4xST29-002）。', '按盒加減說明')}
+    </div>`;
+  }
+  function boxEditHtml() {
+    const r = state.boxes[sv.set] || {};
+    const cards = CARDS.filter(c => E.inSet(c, sv.set)).sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+    return `<div class="panel box-edit" id="bx-panel">
+      <div class="box-head"><span>一盒 ${esc(setName(sv.set))} 的內容</span><span>合共 <b id="bx-total">${E.recipeTotal(r)}</b> 張</span></div>
+      <p class="small muted">按產品包裝或盒內卡牌填寫每張卡的張數（官方產品頁只寫明總張數，例如「51張卡牌(全17種)」）。不在盒內的卡留空。</p>
+      <details${Object.keys(r).length ? '' : ' open'}><summary class="small">貼上卡表</summary>
+        <textarea id="bx-text" rows="4" placeholder="每行一張，例如：&#10;1xST29-001&#10;4xST29-002"></textarea>
+        <button class="small" id="bx-read">讀取</button></details>
+      <div class="batch">${cards.map(c => `<div class="brow${r[c.id] ? ' has' : ''}" data-id="${esc(c.id)}">
+        <div class="thumb" data-detail="${esc(c.id)}">${imgTag(c.id)}</div>
+        <label class="grow" for="bx-${esc(c.id)}"><b>${shownId(c.id)}</b> <span class="muted">${esc(c.rarity || '')}</span>${altBadge(c)}
+          <span class="bname">${esc(c.name || '')}</span></label>
+        <input id="bx-${esc(c.id)}" class="bnum bxq" data-bx="${esc(c.id)}" value="${r[c.id] ? esc(r[c.id]) : ''}" placeholder="0"
+          inputmode="numeric" maxlength="2" autocomplete="off" aria-label="${esc(c.id)} 一盒張數"></div>`).join('')}</div>
+      <div class="toolbar" style="margin:10px 0 0"><button class="small primary" id="bx-save">儲存</button><button class="small" id="bx-cancel">取消</button><button class="small" id="bx-clear">全部清除</button></div>
+    </div>`;
+  }
+  function boxEditTotal() {
+    let t = 0;
+    $$('.bxq').forEach(i => { const n = Number(i.value) || 0; t += n; i.closest('.brow').classList.toggle('has', n > 0); });
+    $('#bx-total').textContent = t;
+  }
+  function readRecipeText() {
+    const r = E.recipeFromText($('#bx-text').value);
+    const ids = Object.keys(r);
+    if (!ids.length) { toast('讀不到卡號，格式例如：4xST29-002'); return; }
+    const inputs = Object.fromEntries($$('.bxq').map(i => [i.dataset.bx, i]));
+    const missing = ids.filter(id => !inputs[id]);
+    for (const [id, i] of Object.entries(inputs)) i.value = r[id] || '';
+    boxEditTotal();
+    toast(missing.length ? `已讀取 ${ids.length - missing.length} 款；不在此系列，未加入：${missing.slice(0, 5).join('、')}${missing.length > 5 ? '…' : ''}` : `已讀取 ${ids.length} 款，請核對後按「儲存」`);
+  }
+  function saveRecipe() {
+    const r = {};
+    for (const i of $$('.bxq')) { const n = Math.floor(Number(i.value) || 0); if (n > 0) r[i.dataset.bx] = n; }
+    if (Object.keys(r).length) state.boxes[sv.set] = r; else delete state.boxes[sv.set];
+    sv.boxEdit = false;
+    save();
+    toast(Object.keys(r).length ? `已儲存：一盒 ${E.recipeTotal(r)} 張（${Object.keys(r).length} 款）` : '已清除一盒內容');
+    renderSets();
+  }
+  async function applyBoxes() {
+    const r = boxRecipe(sv.set);
+    const n = Math.trunc(Number(sv.boxN) || 0);
+    if (!r) { toast('請先設定一盒內容'); return; }
+    if (!n) { toast('請輸入盒數；減少請輸入負數，例如 -1'); return; }
+    const per = E.recipeTotal(r), kinds = Object.keys(r).length;
+    const ok = await ask(`${n > 0 ? '加入' : '減去'} ${Math.abs(n)} 盒 ${setName(sv.set)}？每盒 ${per} 張（${kinds} 款），合共${n > 0 ? '加' : '減'} ${Math.abs(n) * per} 張。`, { ok: n > 0 ? '加入' : '減去' });
+    if (!ok) return;
+    const res = E.addBoxes(state.owned, r, n);
+    state.owned = res.owned;
+    lastBulk = { set: sv.set, prev: res.prev, label: `${n > 0 ? '+' : ''}${n} 盒`, box: true };
+    save();
+    toast(`已${n > 0 ? '加入' : '減去'} ${Math.abs(n)} 盒${res.short.length ? `；其中 ${res.short.length} 款原本不夠減，已設為 0` : ''}。如有錯可按「撤銷」`);
+    renderSets();
+  }
   function renderSetPage(el) {
     const batch = sv.mode === 'batch';
     el.innerHTML = `
@@ -986,7 +1069,7 @@
         <div class="seg" role="group" aria-label="顯示方式">
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
-        <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括異圖及 SP</label>
+        <label class="small"><input type="checkbox" id="sp-par"${parOf(sv.set) ? ' checked' : ''}> 包括異圖及 SP</label>
         <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setFilterOptions().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option>${isBooster(sv.set) ? `<option value="short4">R / SR / SEC 不足 ${PLAYSET} 張</option>` : ''}</select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
@@ -994,6 +1077,8 @@
         <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
       ${sv.bulkOpen ? bulkBarHtml() : ''}
+      ${isStarter(sv.set) ? boxBarHtml() : ''}
+      ${isStarter(sv.set) && sv.boxEdit ? boxEditHtml() : ''}
       ${shortMode() ? `<div id="sp-short">${shortSummaryHtml()}</div>` : ''}
       ${batch ? `<div class="batch" id="sp-batch">${setCards().map(batchRowHtml).join('')}</div>`
         : '<div class="grid" id="sp-grid"></div>'}`;
@@ -1002,7 +1087,7 @@
       const reserved = E.reservedTotals(state.decks), price = pricer();
       $('#sp-grid').innerHTML = setCards().map(c => tileHtml(c, reserved, price, shortNote(c))).join('');
     } else {
-      const inputs = () => $$('.bnum', el);
+      const inputs = () => $$('.bnum[data-bid]', el);
       const move = (from, step) => {
         const all = inputs(), i = all.indexOf(from), next = all[i + step];
         if (next) { next.focus(); next.select(); next.scrollIntoView({ block: 'nearest' }); }
@@ -1037,7 +1122,20 @@
       if (m) { sv.mode = m.dataset.mode; try { localStorage.setItem('opcg-setmode', sv.mode); } catch (err) { /* ignore */ } return renderSets(); }
       if (e.target.closest('#sp-bulk-toggle')) { sv.bulkOpen = !sv.bulkOpen; return renderSets(); }
       if (e.target.closest('#bk-apply')) return applyBulk();
-      if (e.target.closest('#bk-undo') && lastBulk) {
+      const bs = e.target.closest('[data-boxstep]');
+      if (bs) {
+        const inp = $('#bx-n');
+        sv.boxN = (Math.trunc(Number(inp.value) || 0) + Number(bs.dataset.boxstep)) || Number(bs.dataset.boxstep);
+        inp.value = sv.boxN; $('#bx-apply').textContent = boxLabel(sv.boxN);
+        return;
+      }
+      if (e.target.closest('#bx-apply')) { sv.boxN = $('#bx-n').value; return applyBoxes(); }
+      if (e.target.closest('#bx-edit')) { sv.boxEdit = !sv.boxEdit; return renderSets(); }
+      if (e.target.closest('#bx-cancel')) { sv.boxEdit = false; return renderSets(); }
+      if (e.target.closest('#bx-save')) return saveRecipe();
+      if (e.target.closest('#bx-clear')) { $$('.bxq', el).forEach(i => { i.value = ''; }); return boxEditTotal(); }
+      if (e.target.closest('#bx-read')) return readRecipeText();
+      if (e.target.closest('#bk-undo, #bx-undo') && lastBulk) {
         state.owned = E.undoBulk(state.owned, lastBulk.prev);
         toast('已撤銷：' + lastBulk.label);
         lastBulk = null; save(); return renderSets();
@@ -1046,7 +1144,7 @@
         return copyText(shortList().map(x => `${x.id} ${x.rarity} 欠 ${x.short} ${(byId[x.id] || {}).name || ''}`).join('\n'));
       }
       if (e.target.closest('#sp-copy')) {
-        const miss = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)) && !ownedOf(c.id));
+        const miss = CARDS.filter(c => E.inSet(c, sv.set) && (parOf(sv.set) || c.id === E.baseId(c.id)) && !ownedOf(c.id));
         return copyText(miss.map(c => `${c.id} ${c.rarity || ''} ${c.name || ''}`).join('\n'));
       }
       const binf = e.target.closest('[data-binf]');
@@ -1069,9 +1167,15 @@
     };
     el.onkeydown = e => {
       if (e.target.id === 'bk-n' && e.key === 'Enter') { e.preventDefault(); sv.bulkN = e.target.value; applyBulk(); }
+      if (e.target.id === 'bx-n' && e.key === 'Enter') { e.preventDefault(); sv.boxN = e.target.value; applyBoxes(); }
+    };
+    el.oninput = e => {
+      if (e.target.id === 'bx-n') { sv.boxN = e.target.value; $('#bx-apply').textContent = boxLabel(sv.boxN); }
+      if (e.target.dataset.bx) { e.target.value = e.target.value.replace(/[^\d]/g, '').slice(0, 2); boxEditTotal(); }
     };
     el.onchange = e => {
-      if (e.target.dataset.bid) return;
+      if (e.target.dataset.bid || e.target.dataset.bx || e.target.id === 'bx-text') return;
+      if (e.target.id === 'bx-n') { sv.boxN = e.target.value; return; }
       if (e.target.dataset.tq) {
         const n = readQty(e.target);
         if (n === null) return;
@@ -1086,7 +1190,7 @@
       if (e.target.id === 'bk-mode') { sv.bulkMode = e.target.value; return; }
       if (e.target.id === 'bk-n') { sv.bulkN = e.target.value; return; }
       if (e.target.id === 'sp-rarity') sv.rarity = e.target.value;
-      if (e.target.id === 'sp-par') sv.parallels = e.target.checked;
+      if (e.target.id === 'sp-par') { if (isStarter(sv.set)) sv.parallelsST = e.target.checked; else sv.parallels = e.target.checked; }
       if (e.target.id === 'sp-show') sv.show = e.target.value;
       if (e.target.id === 'sp-sort') sv.sort = e.target.value;
       renderSets();

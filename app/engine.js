@@ -2,7 +2,8 @@
 (function (root) {
   'use strict';
 
-  const CARD_RE = /((?:OP|ST|EB|PRB)\d{2}|P)-(\d{3})(?:_?([pr]\d+))?/i;
+  // DON-001 ...: DON!! cards (numbered by the app, from Yuyu-tei's list; the official list has none).
+  const CARD_RE = /((?:OP|ST|EB|PRB)\d{2}|DON|P)-(\d{3})(?:_?([pr]\d+))?/i;
 
   /** 'op08-001_P1' -> 'OP08-001_p1'. Returns '' when no card number is found. */
   function normId(s) {
@@ -143,6 +144,7 @@
     ['CHARACTER', ['CHARACTER', '角色']],
     ['EVENT', ['EVENT', '事件']],
     ['STAGE', ['STAGE', '場地', '舞台']],
+    ['DON', ['DON']],
   ];
   function normCategory(raw) {
     const up = String(raw || '').toUpperCase();
@@ -432,7 +434,7 @@
       const low = t.toLowerCase();
       const up = t.toUpperCase().replace(/^(OP|ST|EB|PRB)-?(\d{1,2})$/, (m, a, b) => a + b.padStart(2, '0'));
       let m;
-      if (/^(OP|ST|EB|PRB)\d{2}$/.test(up)) out.sets.push(up);
+      if (/^(OP|ST|EB|PRB)\d{2}$/.test(up) || /^DON(!!)?$/.test(up)) out.sets.push(up.replace('!!', ''));
       else if (normId(t) && normId(t).length >= t.length - 1) out.text.push(normId(t).toLowerCase());
       else if ((m = /^c(\d+(?:-\d+)?)$/i.exec(t)) && range(m[1])) out.cost = range(m[1]);
       else if ((m = /^p(\d{3,5}(?:-\d{3,5})?)$/i.exec(t)) && range(m[1])) out.power = range(m[1]);
@@ -473,7 +475,7 @@
 
   // -------------------------------------------------------------- sets
   const SET_GROUPS = [
-    ['OP', '補充包'], ['EB', '特殊補充包'], ['PRB', '高級補充包'], ['ST', '起始牌組'], ['P', '推廣卡'],
+    ['OP', '補充包'], ['EB', '特殊補充包'], ['PRB', '高級補充包'], ['ST', '起始牌組'], ['P', '推廣卡'], ['DON', 'DON!!卡'],
   ];
   function setGroup(code) {
     const prefix = String(code || '').replace(/\d+$/, '');
@@ -536,6 +538,44 @@
       if (val > 0) next[id] = val; else delete next[id];
     }
     return { owned: next, prev };
+  }
+
+  /**
+   * Add n sealed boxes of a product (a starter deck) whose contents are `recipe` (card id -> copies in
+   * one box); a negative n takes boxes away, e.g. after adding one too many. ∞ stays ∞, and no count
+   * goes below 0: `short` lists the cards that had fewer than were taken away.
+   * Returns { owned, prev, kinds, copies, short }; `prev` is for undoBulk.
+   */
+  function addBoxes(owned, recipe, n) {
+    n = Math.trunc(Number(n) || 0);
+    const next = Object.assign({}, owned);
+    const prev = {}, short = [];
+    let kinds = 0, copies = 0;
+    for (const [id, per] of Object.entries(recipe || {})) {
+      const k = Math.floor(Number(per) || 0);
+      if (k <= 0 || !n) continue;
+      const old = next[id] || 0;
+      prev[id] = old;
+      kinds++;
+      copies += k * n;
+      if (isInf(old)) continue;
+      let val = old + k * n;
+      if (val < 0) { short.push(id); val = 0; }
+      if (val > 0) next[id] = val; else delete next[id];
+    }
+    return { owned: next, prev, kinds, copies, short };
+  }
+
+  /** Box contents from a pasted list ("4xST29-002", "ST29-001 1" ...), versions kept apart: id -> copies. */
+  function recipeFromText(text) {
+    const out = {};
+    for (const e of parseDeckText(text, { keepVariants: true }).entries) out[e.id] = e.count;
+    return out;
+  }
+
+  /** Copies in one box. */
+  function recipeTotal(recipe) {
+    return Object.values(recipe || {}).reduce((t, k) => t + Math.max(0, Math.floor(Number(k) || 0)), 0);
   }
 
   /**
@@ -615,7 +655,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;

@@ -352,6 +352,40 @@ t('異圖 / SP / 重印 belong only to the series they were released in', () => 
   assert.strictEqual(prog.total, 1, 'EB01 counts its own card only');
 });
 
+t('starter deck boxes: add, take away, never below 0, undo', () => {
+  const recipe = E.recipeFromText('1xST29-001\n4xST29-002\n4 x ST29-003_p1\nST29-004 2');
+  assert.deepStrictEqual(recipe, { 'ST29-001': 1, 'ST29-002': 4, 'ST29-003_p1': 4, 'ST29-004': 2 });
+  assert.strictEqual(E.recipeTotal(recipe), 11);
+  const start = { 'ST29-002': 1, 'ST29-004': E.INF, 'OP01-001': 3 };
+  const two = E.addBoxes(start, recipe, 2);
+  assert.deepStrictEqual(two.owned, { 'ST29-001': 2, 'ST29-002': 9, 'ST29-003_p1': 8, 'ST29-004': E.INF, 'OP01-001': 3 });
+  assert.deepStrictEqual([two.kinds, two.copies, two.short], [4, 22, []]);
+  const less = E.addBoxes(two.owned, recipe, -1);
+  assert.deepStrictEqual(less.owned, { 'ST29-001': 1, 'ST29-002': 5, 'ST29-003_p1': 4, 'ST29-004': E.INF, 'OP01-001': 3 });
+  const tooMany = E.addBoxes(less.owned, recipe, -2);
+  assert.deepStrictEqual(tooMany.owned, { 'ST29-004': E.INF, 'OP01-001': 3 }, 'never below 0, ∞ kept');
+  assert.deepStrictEqual(tooMany.short.sort(), ['ST29-001', 'ST29-002', 'ST29-003_p1']);
+  assert.deepStrictEqual(E.undoBulk(tooMany.owned, tooMany.prev), less.owned, 'undo puts it back');
+  assert.deepStrictEqual(E.addBoxes(start, recipe, 0).owned, start, '0 boxes: nothing');
+});
+
+t('DON!! cards: numbers, series and search', () => {
+  assert.strictEqual(E.normId('don-4'), '', 'needs three digits like other cards');
+  assert.strictEqual(E.normId('don-004'), 'DON-004');
+  assert.strictEqual(E.quickId('DON-015'), 'DON-015');
+  assert.strictEqual(E.setOf('DON-004'), 'DON');
+  assert.strictEqual(E.setGroup('DON'), 'DON!!卡');
+  assert.strictEqual(E.normCategory('DON'), 'DON');
+  const c = { id: 'DON-004', set: 'DON', rarity: 'DON', category: 'DON', name: 'DON!!（ルフィモチーフ）', series: [{ value: 'don', code: 'DON' }] };
+  assert.ok(E.inSet(c, 'DON'));
+  assert.deepStrictEqual(E.parseQuery('DON').sets, ['DON']);
+  assert.deepStrictEqual(E.parseQuery('don!!').sets, ['DON']);
+  assert.ok(E.matchCard(c, E.parseQuery('DON ルフィ'), 0));
+  assert.ok(!E.matchCard({ id: 'OP01-001', name: 'x' }, E.parseQuery('DON'), 0));
+  const prog = E.setProgress([c, { id: 'DON-001', rarity: 'DON', series: [{ code: 'DON' }] }], { 'DON-004': 2 }, 'DON', false);
+  assert.deepStrictEqual([prog.total, prog.have, prog.byRarity.DON.total], [2, 1, 2]);
+});
+
 t('R / SR / SEC short of 4 copies, every version of a number counted together', () => {
   const cards = [
     { id: 'OP01-001', rarity: 'L', series: [{ code: 'OP01' }] },

@@ -9,6 +9,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bot"))
+import don  # noqa: E402
 import scrape_cards  # noqa: E402
 import scrape_decks  # noqa: E402
 import scrape_prices  # noqa: E402
@@ -434,6 +435,116 @@ class CardUpdate(unittest.TestCase):
             else:
                 os.environ["OPCG_IMAGE_WIDTH"] = saved[2]
             scrape_cards._WIDTH = saved[3]
+
+
+# Layout of Yuyu-tei's ドン!!カード page (Nov 2026): no card number, "-" in its place; the stock
+# shows ◯ (in stock) or × (sold out).
+def don_box(no, name, price):
+    return (f'<div class="col-md"><div class="card-product position-relative mt-4">'
+            f'<div class="starbtn"><img src="star.svg" alt="Star" class="star"/></div>'
+            f'<a href="https://yuyu-tei.jp/sell/opc/card/don/{no}"><div class="product-img">'
+            f'<img src="https://card.yuyu-tei.jp/opc/100_140/don/{no}.jpg" alt="- - {name}" class="card"/></div></a>'
+            f'<span class="d-block">-</span><a href="https://yuyu-tei.jp/sell/opc/card/don/{no}"><h4>{name}</h4></a>'
+            f'<strong class="d-block text-end">{price} 円</strong><div class="form-check"><label>在庫 : {"×" if no == "10004" else "◯"}</label></div>'
+            f'<a href="javascript:;" class="btn">-</a></div></div>')
+
+
+DON_PAGE = ('<div class="row" id="card-lits">'
+            + don_box("10001", "ドン!!カード(黒文字白背景/白背景裏面)", "30")
+            + don_box("10002", "ドン!!カード(箔押し)(金文字白背景/白背景裏面)", "420")
+            + don_box("10004", "ドン!!カード(ルフィモチーフ)", "500")
+            + don_box("10015", "ドン!!カード(ドンドットットドンドットット)", "2,480") + "</div>")
+
+
+class DonCards(unittest.TestCase):
+    """DON!! cards: the official list has none, so they come from Yuyu-tei's ドン!!カード page."""
+
+    def test_parse(self):
+        rows = don.parse(DON_PAGE)
+        self.assertEqual([r["id"] for r in rows], ["DON-001", "DON-002", "DON-004", "DON-015"])
+        luffy = rows[2]
+        self.assertEqual((luffy["name"], luffy["nameJa"], luffy["jpy"], luffy["stock"]),
+                         ("ルフィモチーフ", "ドン!!カード(ルフィモチーフ)", 500, 0))
+        self.assertEqual(rows[1]["name"], "箔押し / 金文字白背景/白背景裏面")
+        self.assertEqual(rows[3]["jpy"], 2480)
+        self.assertIsNone(rows[0]["stock"], "◯: in stock, number not shown")
+        self.assertEqual(luffy["url"], "https://yuyu-tei.jp/sell/opc/card/don/10004")
+        self.assertEqual(luffy["image"], "https://card.yuyu-tei.jp/opc/front/don/10004.jpg", "the large picture")
+
+    def test_cards_and_prices(self):
+        rows = don.parse(DON_PAGE)
+        c = don.cards(rows)[2]
+        self.assertEqual((c["id"], c["set"], c["category"], c["rarity"], c["name"]),
+                         ("DON-004", "DON", "DON", "DON", "DON!!（ルフィモチーフ）"))
+        self.assertEqual(c["series"], [{"value": "don", "code": "DON", "label": "DON!!卡"}])
+        p = don.prices(rows)
+        self.assertEqual(p["DON-015"], {"jpy": 2480, "stock": None, "name": "ドン!!カード(ドンドットットドンドットット)",
+                                        "rarity": "DON", "url": "https://yuyu-tei.jp/sell/opc/card/don/10015"})
+
+    def run_cards(self, tmp, don_page):
+        calls = []
+        sel = '<select name="series"><option value="1">【OP-01】</option></select>'
+        card = ('<dl class="modalCol" id="OP01-001"><dt><div class="infoCol"><span>OP01-001</span> | <span>C</span> | '
+                '<span>CHARACTER</span></div><div class="cardName">n</div></dt><dd><div class="frontCol">'
+                '<img data-src="../images/cardlist/card/OP01-001.png"></div></dd></dl>')
+
+        def fake_get(url, delay=1.0, binary=False, retries=3, referer=None):
+            calls.append((url, referer))
+            if binary:
+                return b"IMG"
+            if url == don.URL:
+                if don_page is None:
+                    raise RuntimeError("GET failed")
+                return don_page
+            return card if "?series=" in url else sel
+        saved = scrape_cards.net.get, scrape_cards.DATA, scrape_cards._WIDTH
+        try:
+            scrape_cards.net.get, scrape_cards.DATA, scrape_cards._WIDTH = fake_get, tmp, 0
+            self.assertEqual(scrape_cards.main(["--images", "--delay", "0"]), 0)
+        finally:
+            scrape_cards.net.get, scrape_cards.DATA, scrape_cards._WIDTH = saved
+        with open(os.path.join(tmp, "cards.json"), encoding="utf-8") as f:
+            return json.load(f), calls
+
+    def test_card_update_adds_the_don_series(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            data, calls = self.run_cards(tmp, DON_PAGE)
+            ids = [c["id"] for c in data["cards"]]
+            self.assertEqual(ids, ["OP01-001", "DON-001", "DON-002", "DON-004", "DON-015"])
+            self.assertIn({"value": "don", "code": "DON", "label": "DON!!卡"}, data["series"])
+            pics = {u: r for u, r in calls if u.endswith(".jpg")}
+            self.assertEqual(pics["https://card.yuyu-tei.jp/opc/front/don/10004.jpg"], "https://yuyu-tei.jp/",
+                             "Yuyu-tei pictures are asked for from Yuyu-tei")
+            self.assertTrue(os.path.exists(os.path.join(tmp, "images", "DON-004.jpg")))
+
+            # The DON!! page cannot be read next time: the DON!! cards from before are kept.
+            data, _ = self.run_cards(tmp, None)
+            self.assertEqual(sorted(c["id"] for c in data["cards"] if c["set"] == "DON"),
+                             ["DON-001", "DON-002", "DON-004", "DON-015"])
+            self.assertIn("DON", [s["code"] for s in data["series"]])
+
+    def test_price_update_reads_the_don_page(self):
+        import tempfile
+        saved = scrape_prices.net.get, scrape_prices.DATA
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "cards.json"), "w", encoding="utf-8") as f:
+                json.dump({"cards": don.cards(don.parse(DON_PAGE))}, f)
+            asked = []
+
+            def fake_get(url, delay=1.0, binary=False, retries=3, referer=None):
+                asked.append(url)
+                return DON_PAGE
+            try:
+                scrape_prices.net.get, scrape_prices.DATA = fake_get, tmp
+                self.assertEqual(scrape_prices.main(["--sets", "all", "--rate", "0.05", "--delay", "0"]), 0)
+            finally:
+                scrape_prices.net.get, scrape_prices.DATA = saved
+            with open(os.path.join(tmp, "prices.json"), encoding="utf-8") as f:
+                prices = json.load(f)["prices"]
+        self.assertEqual(asked, ["https://yuyu-tei.jp/sell/opc/s/don"])
+        self.assertEqual({k: v["jpy"] for k, v in prices.items()},
+                         {"DON-001": 30, "DON-002": 420, "DON-004": 500, "DON-015": 2480})
 
 
 if __name__ == "__main__":

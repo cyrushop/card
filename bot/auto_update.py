@@ -33,6 +33,9 @@ TASKS = {
 }
 INTERVAL = {"daily": 20 * 3600, "weekly": 6.5 * 86400}  # a little under a day / a week, so a fixed daily time never slips
 LOCK_STALE = 4 * 3600
+# Exit code when another update holds the lock: the run did nothing, and it must not look like a
+# success (a manual update started from GitHub only sees the exit code).
+LOCKED = 75
 
 
 def load_json(path, default):
@@ -84,8 +87,9 @@ def run(data_dir=DATA, force=False, now=None, runner=default_runner):
     now = now if now_given else time.time()
     lock = os.path.join(data_dir, "auto-update.lock")
     if os.path.exists(lock) and now - os.path.getmtime(lock) < LOCK_STALE:
-        print("另一次更新正在進行，略過。")
-        return []
+        mins = int((now - os.path.getmtime(lock)) // 60)
+        print(f"另一次更新正在進行（{mins} 分鐘前開始），這次沒有執行，以失敗結束（代碼 {LOCKED}）。請稍後再試。")
+        return [("locked", LOCKED)]
     status_path = os.path.join(data_dir, "auto-update.json")
     status = load_json(status_path, {})
     last = status.get("tasks") or {}
@@ -129,12 +133,15 @@ def run(data_dir=DATA, force=False, now=None, runner=default_runner):
     return results
 
 
-def main(argv=None):
+def main(argv=None, data_dir=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--force", action="store_true", help="run every enabled update now, even in manual mode")
     args = ap.parse_args(argv)
-    results = run(force=args.force)
-    return 1 if any(code for _, code in results) else 0
+    results = run(data_dir or DATA, force=args.force)
+    codes = [code for _, code in results]
+    if LOCKED in codes:
+        return LOCKED
+    return 1 if any(codes) else 0
 
 
 if __name__ == "__main__":
