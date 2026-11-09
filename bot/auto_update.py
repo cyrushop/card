@@ -31,6 +31,10 @@ TASKS = {
     "prices": ([os.path.join(HERE, "scrape_prices.py")], "價格"),
     "decks": ([os.path.join(HERE, "scrape_decks.py")], "熱門牌組"),
 }
+# Extras: when one of these fails the run still counts as a success if the card list and prices
+# updated (the failure is recorded and shown in the app). The deck site can refuse automatic
+# readers, which should not mark the whole update as failed.
+OPTIONAL = {"decks"}
 INTERVAL = {"daily": 20 * 3600, "weekly": 6.5 * 86400}  # a little under a day / a week, so a fixed daily time never slips
 LOCK_STALE = 4 * 3600
 # Exit code when another update holds the lock: the run did nothing, and it must not look like a
@@ -122,7 +126,8 @@ def run(data_dir=DATA, force=False, now=None, runner=default_runner):
                 rec["okAt"] = last[t]["okAt"]  # keep the last success so it is retried next time
             last[t] = rec
             results.append((t, code))
-            print(("  完成" if code == 0 else f"  失敗（代碼 {code}）") + (": " + " / ".join(summary[-2:]) if summary else ""))
+            extra = "，不影響其他更新" if code and t in OPTIONAL else ""
+            print(("  完成" if code == 0 else f"  失敗（代碼 {code}{extra}）") + (": " + " / ".join(summary[-2:]) if summary else ""))
             status["tasks"] = last
             save_json(status_path, status)
     finally:
@@ -138,10 +143,20 @@ def main(argv=None, data_dir=None):
     ap.add_argument("--force", action="store_true", help="run every enabled update now, even in manual mode")
     args = ap.parse_args(argv)
     results = run(data_dir or DATA, force=args.force)
-    codes = [code for _, code in results]
-    if LOCKED in codes:
+    return exit_code(results)
+
+
+def exit_code(results):
+    """75 when another update held the lock, 1 when the card list or prices failed, else 0.
+    A failed extra (熱門牌組) is reported but does not fail the run."""
+    if any(code == LOCKED for _, code in results):
         return LOCKED
-    return 1 if any(codes) else 0
+    extras = [TASKS[t][1] for t, code in results if code and t in OPTIONAL]
+    if any(code for t, code in results if t not in OPTIONAL):
+        return 1
+    if extras:
+        print(f"注意：{'、'.join(extras)}讀取失敗，其他項目已完成，所以這次以成功結束。")
+    return 0
 
 
 if __name__ == "__main__":
