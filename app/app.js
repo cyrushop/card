@@ -558,7 +558,7 @@
     $('#cf-grid').innerHTML = list.slice(0, cf.limit).map(c => tileHtml(c, reserved, price)).join('');
     $('#cf-more').style.display = list.length > cf.limit ? '' : 'none';
   }
-  function tileHtml(c, reserved, price) {
+  function tileHtml(c, reserved, price, note) {
     const n = ownedOf(c.id);
     const p = (price || pricer())(c.id);
     const r = c.id === E.baseId(c.id) ? reserved[c.id] || 0 : 0;
@@ -566,7 +566,7 @@
       <div class="img" data-act="detail">${imgTag(c.id)}${n ? `<span class="own-badge">×${E.fmtQty(n)}</span>` : ''}${versionTag(c) ? `<span class="alt-badge">${esc(versionTag(c))}</span>` : ''}${c.isNew ? '<span class="new-badge">新</span>' : ''}</div>
       <div class="meta">${shownId(c.id)} <span class="muted">${esc(c.rarity || '')}</span> ${dots(c)}</div>
       <div class="meta name" title="${esc(c.name)}">${esc(c.name || (c.unknown ? '（卡表沒有資料）' : ''))}</div>
-      <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${E.isInf(n) ? '∞' : Math.max(0, n - r)}` : ''}</div>
+      <div class="sub">${p ? `<b class="price">${hk(p.hkd)}</b> ${changeHtml(p.change)} ` : ''}${r ? `預留 ${r} · 可用 ${E.isInf(n) ? '∞' : Math.max(0, n - r)}` : ''}${note ? `<span class="short-note">${note}</span>` : ''}</div>
       <div class="qty"><button data-act="dec" aria-label="減一">−</button>${qtyInput(c.id, n, 'data-tq', 'n' + (n ? '' : ' zero'))}<button data-act="inc" aria-label="加一">+</button><button data-act="inf" class="inf${E.isInf(n) ? ' on' : ''}" title="很多，不計數" aria-label="設為 ∞（很多，不計數）">∞</button></div>
     </div>`;
   }
@@ -864,7 +864,37 @@
     };
     el.onchange = e => { if (e.target.id === 'sv-par') { sv.parallels = e.target.checked; renderSets(); } };
   }
+  // Booster series: which R / SR / SEC are short of 4 copies (a playset).
+  const PLAYSET = 4, PLAYSET_RARITIES = ['R', 'SR', 'SEC'];
+  const isBooster = code => ['補充包', '特殊補充包', '高級補充包'].includes(E.setGroup(code));
+  const shortMode = () => sv.show === 'short4' && isBooster(sv.set);
+  function shortList() {
+    const rar = PLAYSET_RARITIES.includes(sv.rarity) ? [sv.rarity] : PLAYSET_RARITIES;
+    return E.shortOfPlayset(CARDS, state.owned, sv.set, rar, PLAYSET);
+  }
+  /** Copies of a card number, all versions together (as the playset check counts them). */
+  function playCount(id) {
+    const b = E.baseId(id);
+    return Object.entries(state.owned).reduce((t, [k, n]) => t + (E.baseId(k) === b ? E.countable(n) : 0), 0);
+  }
+  function shortNote(c) {
+    if (!shortMode() || !c || c.id !== E.baseId(c.id)) return '';
+    const h = playCount(c.id);
+    return h >= PLAYSET ? `<b class="ok">已有 ${h} 張</b>` : `有 ${h} · <b class="warn">欠 ${PLAYSET - h}</b>`;
+  }
+  function shortSummaryHtml() {
+    const list = shortList();
+    const by = r => list.filter(x => x.rarity === r);
+    const parts = PLAYSET_RARITIES.map(r => by(r).length ? `${r} ${by(r).length} 款（欠 ${by(r).reduce((t, x) => t + x.short, 0)} 張）` : '').filter(Boolean);
+    return `<p class="small short-sum">${list.length ? `<b>${list.length}</b> 款不足 ${PLAYSET} 張，合共欠 <b>${list.reduce((t, x) => t + x.short, 0)}</b> 張：${parts.join(' · ')}` : `R / SR / SEC 全部已有 ${PLAYSET} 張或以上`}
+      <span class="muted">· 按欠的張數排列（欠最多的先）。同一卡號的異圖、SP、重印一併計算，∞ 當足夠。</span></p>`;
+  }
   function setCards() {
+    if (shortMode()) {
+      const list = shortList().map(x => byId[x.id]).filter(Boolean);
+      if (sv.sort === 'price') { const pr = pricer(); const v = c => (pr(c.id) || { hkd: -1 }).hkd; list.sort((a, b) => v(b) - v(a)); }
+      return list;
+    }
     // Choosing SP / 異圖 / 重印 shows those versions even when "包括異圖及 SP" is off.
     const pickVersion = VERSION_KINDS.includes(sv.rarity);
     let list = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || pickVersion || c.id === E.baseId(c.id)));
@@ -958,18 +988,19 @@
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
         <label class="small"><input type="checkbox" id="sp-par"${sv.parallels ? ' checked' : ''}> 包括異圖及 SP</label>
         <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setFilterOptions().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
-        <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option></select>
+        <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option>${isBooster(sv.set) ? `<option value="short4">R / SR / SEC 不足 ${PLAYSET} 張</option>` : ''}</select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>
         <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
       ${sv.bulkOpen ? bulkBarHtml() : ''}
+      ${shortMode() ? `<div id="sp-short">${shortSummaryHtml()}</div>` : ''}
       ${batch ? `<div class="batch" id="sp-batch">${setCards().map(batchRowHtml).join('')}</div>`
         : '<div class="grid" id="sp-grid"></div>'}`;
-    $('#sp-show').value = sv.show; $('#sp-sort').value = sv.sort;
+    $('#sp-show').value = shortMode() || sv.show !== 'short4' ? sv.show : ''; $('#sp-sort').value = sv.sort;
     if (!batch) {
       const reserved = E.reservedTotals(state.decks), price = pricer();
-      $('#sp-grid').innerHTML = setCards().map(c => tileHtml(c, reserved, price)).join('');
+      $('#sp-grid').innerHTML = setCards().map(c => tileHtml(c, reserved, price, shortNote(c))).join('');
     } else {
       const inputs = () => $$('.bnum', el);
       const move = (from, step) => {
@@ -1011,6 +1042,9 @@
         toast('已撤銷：' + lastBulk.label);
         lastBulk = null; save(); return renderSets();
       }
+      if (e.target.closest('#sp-copy') && shortMode()) {
+        return copyText(shortList().map(x => `${x.id} ${x.rarity} 欠 ${x.short} ${(byId[x.id] || {}).name || ''}`).join('\n'));
+      }
       if (e.target.closest('#sp-copy')) {
         const miss = CARDS.filter(c => E.inSet(c, sv.set) && (sv.parallels || c.id === E.baseId(c.id)) && !ownedOf(c.id));
         return copyText(miss.map(c => `${c.id} ${c.rarity || ''} ${c.name || ''}`).join('\n'));
@@ -1029,8 +1063,9 @@
       if (btn.dataset.act === 'detail') return showDetail(id);
       if (btn.dataset.act === 'inf') setOwned(id, E.INF);
       else if (!stepOwned(id, btn.dataset.act === 'inc' ? 1 : -1)) return;
-      tile.outerHTML = tileHtml(byId[id] || { id }, E.reservedTotals(state.decks));
+      tile.outerHTML = tileHtml(byId[id] || { id }, E.reservedTotals(state.decks), null, shortNote(byId[id]));
       $('#sp-summary').innerHTML = setSummaryHtml();
+      if ($('#sp-short')) $('#sp-short').innerHTML = shortSummaryHtml();
     };
     el.onkeydown = e => {
       if (e.target.id === 'bk-n' && e.key === 'Enter') { e.preventDefault(); sv.bulkN = e.target.value; applyBulk(); }
@@ -1042,8 +1077,9 @@
         if (n === null) return;
         setOwned(e.target.dataset.tq, n);
         const tile = e.target.closest('.tile');
-        tile.outerHTML = tileHtml(byId[tile.dataset.id] || { id: tile.dataset.id }, E.reservedTotals(state.decks));
+        tile.outerHTML = tileHtml(byId[tile.dataset.id] || { id: tile.dataset.id }, E.reservedTotals(state.decks), null, shortNote(byId[tile.dataset.id]));
         $('#sp-summary').innerHTML = setSummaryHtml();
+        if ($('#sp-short')) $('#sp-short').innerHTML = shortSummaryHtml();
         return;
       }
       if (e.target.id === 'bk-rarity') { sv.bulkRarity = e.target.value; return renderSets(); }

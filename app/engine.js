@@ -538,6 +538,31 @@
     return { owned: next, prev };
   }
 
+  /**
+   * Cards of a series short of a playset (default 4 copies): normal versions of the given rarities whose
+   * card number has fewer copies, counting every version of that number together (異圖, SP and 重印
+   * play the same; ∞ counts as enough). Most missing first, then by number.
+   * Returns [{ id, rarity, have, short }].
+   */
+  function shortOfPlayset(cards, owned, code, rarities, need) {
+    need = need || 4;
+    const want = new Set((rarities || []).map(r => normRarity(r).toUpperCase()));
+    const have = {};
+    for (const [id, n] of Object.entries(owned || {})) {
+      const b = baseId(id);
+      have[b] = (have[b] || 0) + countable(n);
+    }
+    const out = [];
+    for (const c of cards) {
+      if (c.id !== baseId(c.id) || !inSet(c, code)) continue;
+      const r = normRarity(c.rarity);
+      if (want.size && !want.has(r.toUpperCase())) continue;
+      const h = have[c.id] || 0;
+      if (h < need) out.push({ id: c.id, rarity: r, have: h, short: need - h });
+    }
+    return out.sort((a, b) => b.short - a.short || a.id.localeCompare(b.id, 'en', { numeric: true }));
+  }
+
   /** Undo a bulkSet: put back the counts it replaced. */
   function undoBulk(owned, prev) {
     const next = Object.assign({}, owned);
@@ -590,7 +615,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;

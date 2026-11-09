@@ -352,3 +352,9 @@ h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
 .bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin: -4px 0 12px;
   background: var(--panel); border: 1px dashed var(--accent); border-radius: 10px; }
 .ph[hidden] { display: none; }
+
+/* booster series: R / SR / SEC short of 4 copies */
+.short-note { display: block; font-size: 12px; }
+.short-note .warn, .short-sum .warn { color: var(--accent); }
+.short-note .ok { color: var(--ok); }
+.short-sum { margin: -4px 0 10px; }

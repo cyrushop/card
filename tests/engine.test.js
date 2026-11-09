@@ -352,4 +352,22 @@ t('異圖 / SP / 重印 belong only to the series they were released in', () => 
   assert.strictEqual(prog.total, 1, 'EB01 counts its own card only');
 });
 
+t('R / SR / SEC short of 4 copies, every version of a number counted together', () => {
+  const cards = [
+    { id: 'OP01-001', rarity: 'L', series: [{ code: 'OP01' }] },
+    { id: 'OP01-010', rarity: 'R', series: [{ code: 'OP01' }] },
+    { id: 'OP01-011', rarity: 'R', series: [{ code: 'OP01' }] },
+    { id: 'OP01-012', rarity: 'SR', series: [{ code: 'OP01' }] },
+    { id: 'OP01-012_p1', rarity: 'SR', series: [{ code: 'OP01' }] },
+    { id: 'OP01-013', rarity: 'SEC', series: [{ code: 'OP01' }] },
+    { id: 'OP01-014', rarity: 'C', series: [{ code: 'OP01' }] },
+    { id: 'OP01-015', rarity: 'SR', series: [{ code: 'OP01' }] },
+  ];
+  const owned = { 'OP01-010': 4, 'OP01-011': 1, 'OP01-012': 2, 'OP01-012_p1': 1, 'OP01-015': E.INF, 'EB01-099': 1 };
+  const s = E.shortOfPlayset(cards, owned, 'OP01', ['R', 'SR', 'SEC']);
+  assert.deepStrictEqual(s.map(x => [x.id, x.have, x.short]), [['OP01-013', 0, 4], ['OP01-011', 1, 3], ['OP01-012', 3, 1]],
+    'most missing first; 異圖 counts with its number; ∞ is enough; L and C left out');
+  assert.deepStrictEqual(E.shortOfPlayset(cards, owned, 'OP01', ['SR']).map(x => x.id), ['OP01-012']);
+});
+
 console.log(`\n${passed} tests passed`);
