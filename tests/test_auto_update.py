@@ -87,5 +87,39 @@ class AutoUpdate(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.dir, "auto-update.json")), "nothing was run or recorded")
 
 
+    def per_task_runner(self, codes):
+        def fake(cmd, env):
+            name = os.path.basename(cmd[0])
+            self.calls.append(name)
+            return codes.get(name, 0), "Reading...\n"
+        return fake
+
+    def test_a_failed_deck_list_does_not_fail_the_update(self):
+        # The deck site refused the cloud reader (Nov 2026) while cards and prices updated:
+        # the run succeeds, and the failure stays on record for the app.
+        self.set_mode(mode="auto")
+        res = au.run(self.dir, runner=self.per_task_runner({"scrape_decks.py": 1}))
+        self.assertEqual(res, [("cards", 0), ("prices", 0), ("decks", 1)])
+        self.assertEqual(au.exit_code(res), 0)
+        self.assertEqual(self.status()["tasks"]["decks"]["code"], 1)
+        self.assertNotIn("okAt", self.status()["tasks"]["decks"], "tried again next time")
+
+    def test_card_or_price_failures_still_fail(self):
+        self.assertEqual(au.exit_code([("cards", 0), ("prices", 1), ("decks", 0)]), 1)
+        self.assertEqual(au.exit_code([("cards", 1), ("prices", 0), ("decks", 1)]), 1)
+        self.assertEqual(au.exit_code([("locked", au.LOCKED)]), au.LOCKED)
+        self.assertEqual(au.exit_code([]), 0)
+
+    def test_main_returns_0_when_only_the_deck_list_fails(self):
+        self.set_mode(mode="auto")
+        saved = au.default_runner
+        try:
+            au.run.__defaults__ = au.run.__defaults__[:-1] + (self.per_task_runner({"scrape_decks.py": 1}),)
+            self.assertEqual(au.main(["--force"], data_dir=self.dir), 0)
+        finally:
+            au.run.__defaults__ = au.run.__defaults__[:-1] + (saved,)
+        self.assertEqual(self.calls, ["scrape_cards.py", "scrape_prices.py", "scrape_decks.py"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

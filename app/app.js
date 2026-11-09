@@ -1737,7 +1737,7 @@
     const when = t => t ? new Date(t * 1000).toLocaleString('zh-HK', { hour12: false }) : '';
     const last = Object.keys(AUTO_LABEL).filter(k => tasks[k]).map(k => {
       const r = tasks[k];
-      return `<li><b>${esc(AUTO_LABEL[k].split('（')[0])}</b>：${esc(when(r.at))} · ${r.code === 0 ? '<span class="ok">成功</span>' : `<span class="bad">失敗（代碼 ${esc(r.code)}）</span>`}
+      return `<li><b>${esc(AUTO_LABEL[k].split('（')[0])}</b>：${esc(when(r.at))} · ${r.code === 0 ? '<span class="ok">成功</span>' : `<span class="bad">失敗（代碼 ${esc(r.code)}）</span>${k === 'decks' ? '<span class="muted small">（不影響卡表及價格；網站可能拒絕自動讀取，可在上方取消此項）</span>' : ''}`}
         ${(r.summary || []).length ? `<br><span class="muted small">${esc(r.summary.join('　'))}</span>` : ''}</li>`;
     }).join('');
     return `
