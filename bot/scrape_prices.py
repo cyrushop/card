@@ -29,6 +29,7 @@ import time
 from urllib.parse import urljoin
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import don  # noqa: E402
 import htmldom  # noqa: E402
 import net  # noqa: E402
 
@@ -279,7 +280,10 @@ def main(argv=None):
             os.makedirs(raw, exist_ok=True)
             with open(os.path.join(raw, f"yuyutei-{code}.html"), "w", encoding="utf-8") as f:
                 f.write(html)
-        mapped = map_ids(parse_shop(html, url), code, official_versions(cards, code) if cards else None)
+        if code == "DON":  # DON!! cards: Yuyu-tei's own page, already numbered DON-001 ...
+            mapped = don.prices(don.parse(html, url))
+        else:
+            mapped = map_ids(parse_shop(html, url), code, official_versions(cards, code) if cards else None)
         for cid, r in mapped.items():
             if cid not in found or (found[cid].get("foreign") and not r.get("foreign")):
                 found[cid] = r

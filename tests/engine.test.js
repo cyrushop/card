@@ -352,4 +352,21 @@ t('異圖 / SP / 重印 belong only to the series they were released in', () => 
   assert.strictEqual(prog.total, 1, 'EB01 counts its own card only');
 });
 
+t('DON!! cards: numbers, series and search', () => {
+  assert.strictEqual(E.normId('don-4'), '', 'needs three digits like other cards');
+  assert.strictEqual(E.normId('don-004'), 'DON-004');
+  assert.strictEqual(E.quickId('DON-015'), 'DON-015');
+  assert.strictEqual(E.setOf('DON-004'), 'DON');
+  assert.strictEqual(E.setGroup('DON'), 'DON!!卡');
+  assert.strictEqual(E.normCategory('DON'), 'DON');
+  const c = { id: 'DON-004', set: 'DON', rarity: 'DON', category: 'DON', name: 'DON!!（ルフィモチーフ）', series: [{ value: 'don', code: 'DON' }] };
+  assert.ok(E.inSet(c, 'DON'));
+  assert.deepStrictEqual(E.parseQuery('DON').sets, ['DON']);
+  assert.deepStrictEqual(E.parseQuery('don!!').sets, ['DON']);
+  assert.ok(E.matchCard(c, E.parseQuery('DON ルフィ'), 0));
+  assert.ok(!E.matchCard({ id: 'OP01-001', name: 'x' }, E.parseQuery('DON'), 0));
+  const prog = E.setProgress([c, { id: 'DON-001', rarity: 'DON', series: [{ code: 'DON' }] }], { 'DON-004': 2 }, 'DON', false);
+  assert.deepStrictEqual([prog.total, prog.have, prog.byRarity.DON.total], [2, 1, 2]);
+});
+
 console.log(`\n${passed} tests passed`);
