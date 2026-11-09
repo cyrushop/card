@@ -538,6 +538,44 @@
     return { owned: next, prev };
   }
 
+  /**
+   * Add n sealed boxes of a product (a starter deck) whose contents are `recipe` (card id -> copies in
+   * one box); a negative n takes boxes away, e.g. after adding one too many. ∞ stays ∞, and no count
+   * goes below 0: `short` lists the cards that had fewer than were taken away.
+   * Returns { owned, prev, kinds, copies, short }; `prev` is for undoBulk.
+   */
+  function addBoxes(owned, recipe, n) {
+    n = Math.trunc(Number(n) || 0);
+    const next = Object.assign({}, owned);
+    const prev = {}, short = [];
+    let kinds = 0, copies = 0;
+    for (const [id, per] of Object.entries(recipe || {})) {
+      const k = Math.floor(Number(per) || 0);
+      if (k <= 0 || !n) continue;
+      const old = next[id] || 0;
+      prev[id] = old;
+      kinds++;
+      copies += k * n;
+      if (isInf(old)) continue;
+      let val = old + k * n;
+      if (val < 0) { short.push(id); val = 0; }
+      if (val > 0) next[id] = val; else delete next[id];
+    }
+    return { owned: next, prev, kinds, copies, short };
+  }
+
+  /** Box contents from a pasted list ("4xST29-002", "ST29-001 1" ...), versions kept apart: id -> copies. */
+  function recipeFromText(text) {
+    const out = {};
+    for (const e of parseDeckText(text, { keepVariants: true }).entries) out[e.id] = e.count;
+    return out;
+  }
+
+  /** Copies in one box. */
+  function recipeTotal(recipe) {
+    return Object.values(recipe || {}).reduce((t, k) => t + Math.max(0, Math.floor(Number(k) || 0)), 0);
+  }
+
   /** Undo a bulkSet: put back the counts it replaced. */
   function undoBulk(owned, prev) {
     const next = Object.assign({}, owned);
@@ -590,7 +628,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, bulkSet, undoBulk, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;
