@@ -19,6 +19,7 @@ import time
 from urllib.parse import urljoin, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import don  # noqa: E402
 import htmldom  # noqa: E402
 import net  # noqa: E402
 
@@ -161,6 +162,34 @@ def pick_series(all_series, wanted):
     return [s for s in all_series if s["value"] in keys or s["code"] in keys]
 
 
+def wants_don(wanted):
+    """DON!! cards are read with every series, or when DON is asked for by name."""
+    if not wanted or wanted.lower() == "all":
+        return True
+    return "DON" in {w.strip().upper() for w in wanted.split(",")}
+
+
+def read_don(delay):
+    """DON!! cards from Yuyu-tei (the official list has none). None when the page cannot be read,
+    so the DON!! cards from the last run are kept."""
+    print(f"DON!!卡: {don.URL}")
+    try:
+        cards = don.cards(don.parse(net.get(don.URL, delay=delay)))
+    except RuntimeError as e:
+        print(f"  ! DON!!卡: {e} (keeping the DON!! cards from the last update)", file=sys.stderr)
+        return None
+    if not cards:
+        print("  ! no DON!! cards found on the page (layout change?)", file=sys.stderr)
+        return None
+    print(f"  {len(cards)} cards")
+    return cards
+
+
+def image_referer(url):
+    """Pictures are asked for as if from the page that shows them."""
+    return "https://yuyu-tei.jp/" if "yuyu-tei.jp" in urlparse(url).netloc else BASE
+
+
 def download_images(cards, delay):
     """Download images that are missing, or whose address on the site changed
     (the site adds a version like ?250101 when it replaces an image).
@@ -197,7 +226,7 @@ def download_images(cards, delay):
             except Exception as e:
                 print(f"  ! shrink {c['id']}: {e}", file=sys.stderr)
         try:
-            data = net.get(c["image"], delay=delay, binary=True, referer=BASE)
+            data = net.get(c["image"], delay=delay, binary=True, referer=image_referer(c["image"]))
             if width:
                 data = shrink(data, width)
             _write_atomic(path, data)
@@ -334,7 +363,7 @@ def main(argv=None):
         return 0
 
     chosen = pick_series(all_series, args.series)
-    if not chosen:
+    if not chosen and not wants_don(args.series):
         print(f"No series matches {args.series!r}. Use --list-series.", file=sys.stderr)
         return 2
 
@@ -359,6 +388,14 @@ def main(argv=None):
                 by_id[c["id"]] = c
                 order.append(c["id"])
         print(f"  {len(cards)} cards")
+
+    if wants_don(args.series):
+        don_cards = read_don(args.delay)
+        if don_cards:
+            chosen = chosen + [dict(don.SERIES)]
+            for c in don_cards:
+                by_id[c["id"]] = c
+                order.append(c["id"])
 
     old = _load_existing()
     old_ids = {c["id"] for c in old.get("cards", [])}

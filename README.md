@@ -132,7 +132,7 @@ PROJECT=你的專案ID EMAIL=你的Gmail ./deploy/deploy.sh
 
 | BOT | 來源 | 輸出 |
 |---|---|---|
-| `bot/scrape_cards.py` | https://asia-tc.onepiece-cardgame.com/cardlist/（每個系列一頁） | `data/cards.json`、`data/cards.js`、`data/images/` |
+| `bot/scrape_cards.py` | https://asia-tc.onepiece-cardgame.com/cardlist/（每個系列一頁）；DON!!卡來自 https://yuyu-tei.jp/sell/opc/s/don（官方卡表沒有 DON!!卡） | `data/cards.json`、`data/cards.js`、`data/images/` |
 | `bot/scrape_decks.py` | https://onepiecetopdecks.com/deck-list/ 及其連結的牌組清單頁 | `data/decks.json`、`data/decks.js` |
 | `bot/scrape_prices.py` | https://yuyu-tei.jp/sell/opc/s/op08 等（悠々亭日版單卡售價）及 https://open.er-api.com 匯率 | `data/prices.json`、`data/prices.js`（保留 180 日價格歷史） |
 
@@ -149,6 +149,7 @@ BOT 每次請求之間會等候 1 秒。
 
 ## 價格計算方法
 
+* **DON!!卡**：官方卡表沒有 DON!!卡，所以「DON」系列的卡表、卡圖及價格都來自悠々亭的「ドン!!カード」頁（日版）。卡號 `DON-001`、`DON-002` 等由本 App 按悠々亭的編號編排（悠々亭 10001 = `DON-001`），新 DON!!卡加入後舊卡號不變；卡名沿用悠々亭的日文名稱。亞洲中文版獨有的 DON!!卡如果悠々亭沒有，就不會出現。
 * **自動價格** = 悠々亭日版售價（JPY）× 匯率（JPY→HKD）× 係數。係數預設為 1，可在「設定」修改，例如亞洲中文版行情較低時可設為 0.8。
 * **手動價格**（HK$）永遠優先。在「高價卡」或卡的詳細頁輸入；清空即改回自動價格。
 * 異圖及 SP（悠々亭稱「パラレル」）：悠々亭以同一卡號列出普通版、異圖及 SP。BOT 會對照官方卡表（`data/cards.json`），把普通版對應至 `OP08-001`，異圖及 SP 分開，各自按價格由低至高對應至該系列的官方卡號；沿用舊卡號的重印（例如 EB05 內的 `OP11-022_p2`）亦會對應正確。**同一張卡有多款異圖時，各款之間的對應仍屬推測**，高價卡請自行核對，如有錯誤請輸入手動價格。請先執行卡表 BOT，否則只能按價格次序推測。
