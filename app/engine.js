@@ -2,7 +2,8 @@
 (function (root) {
   'use strict';
 
-  const CARD_RE = /((?:OP|ST|EB|PRB)\d{2}|P)-(\d{3})(?:_?([pr]\d+))?/i;
+  // DON-001 ...: DON!! cards (numbered by the app, from Yuyu-tei's list; the official list has none).
+  const CARD_RE = /((?:OP|ST|EB|PRB)\d{2}|DON|P)-(\d{3})(?:_?([pr]\d+))?/i;
 
   /** 'op08-001_P1' -> 'OP08-001_p1'. Returns '' when no card number is found. */
   function normId(s) {
@@ -143,6 +144,7 @@
     ['CHARACTER', ['CHARACTER', '角色']],
     ['EVENT', ['EVENT', '事件']],
     ['STAGE', ['STAGE', '場地', '舞台']],
+    ['DON', ['DON']],
   ];
   function normCategory(raw) {
     const up = String(raw || '').toUpperCase();
@@ -432,7 +434,7 @@
       const low = t.toLowerCase();
       const up = t.toUpperCase().replace(/^(OP|ST|EB|PRB)-?(\d{1,2})$/, (m, a, b) => a + b.padStart(2, '0'));
       let m;
-      if (/^(OP|ST|EB|PRB)\d{2}$/.test(up)) out.sets.push(up);
+      if (/^(OP|ST|EB|PRB)\d{2}$/.test(up) || /^DON(!!)?$/.test(up)) out.sets.push(up.replace('!!', ''));
       else if (normId(t) && normId(t).length >= t.length - 1) out.text.push(normId(t).toLowerCase());
       else if ((m = /^c(\d+(?:-\d+)?)$/i.exec(t)) && range(m[1])) out.cost = range(m[1]);
       else if ((m = /^p(\d{3,5}(?:-\d{3,5})?)$/i.exec(t)) && range(m[1])) out.power = range(m[1]);
@@ -473,7 +475,7 @@
 
   // -------------------------------------------------------------- sets
   const SET_GROUPS = [
-    ['OP', '補充包'], ['EB', '特殊補充包'], ['PRB', '高級補充包'], ['ST', '起始牌組'], ['P', '推廣卡'],
+    ['OP', '補充包'], ['EB', '特殊補充包'], ['PRB', '高級補充包'], ['ST', '起始牌組'], ['P', '推廣卡'], ['DON', 'DON!!卡'],
   ];
   function setGroup(code) {
     const prefix = String(code || '').replace(/\d+$/, '');

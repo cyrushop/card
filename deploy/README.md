@@ -117,7 +117,7 @@ gcloud run jobs executions list --job opcg-update --region asia-east2
 
 之後：
 * 每次合併到 `main` 並通過測試，便會自動部署（GitHub →「Actions」→「deploy」可看記錄）。
-* 手動執行：GitHub →「Actions」→「deploy」→「Run workflow」：`deploy` 重新部署；`update` 立即執行一次完整更新（卡表、卡圖、價格）。
+* 手動執行：GitHub →「Actions」→「deploy」→「Run workflow」：`deploy` 重新部署；`update` 立即執行一次完整更新（卡表、卡圖、價格）。`update` 會等到更新完成才結束；如另一次更新仍在進行，這次不會執行，並顯示為失敗（代碼 75），稍後再試即可。
 * 存取設定（IAP、允許名單、OAuth 用戶端）、儲存空間及排程不會被自動部署改動；要改動這些，仍使用 `deploy/deploy.sh`。
 
 部署帳戶 `github-deploy` 的權限：Cloud Run Source Developer、Cloud Run Developer、Service Usage Consumer、Logs Viewer，以及可以代表服務帳戶及建置帳戶執行（Service Account User）。

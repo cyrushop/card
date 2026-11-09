@@ -77,6 +77,9 @@ jobs:
         # time), so its result here tells whether the update worked.
         timeout-minutes: 200
         run: |
-          gcloud run jobs execute "${GCP_SERVICE}-update" --region "$GCP_REGION" --project "$GCP_PROJECT" \
-            --args="-I,bot/auto_update.py,--force" --wait
+          if ! gcloud run jobs execute "${GCP_SERVICE}-update" --region "$GCP_REGION" --project "$GCP_PROJECT" \
+               --args="-I,bot/auto_update.py,--force" --wait; then
+            echo "The update failed, or did not run because another update was still running (exit code 75). Try again later." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           echo "Full update (cards, pictures, prices) finished." >> "$GITHUB_STEP_SUMMARY"

@@ -26,7 +26,7 @@
   const variantsOf = {};
   for (const c of CARDS) (variantsOf[E.baseId(c.id)] = variantsOf[E.baseId(c.id)] || []).push(c.id);
 
-  const setRank = s => ({ OP: 0, EB: 1, PRB: 2, ST: 3, P: 4 }[s.replace(/\d+/g, '')] ?? 5);
+  const setRank = s => ({ OP: 0, EB: 1, PRB: 2, ST: 3, P: 4, DON: 5 }[s.replace(/\d+/g, '')] ?? 6);
   // Newest first (for drop-downs).
   function setSort(a, b) { return setRank(a) - setRank(b) || b.localeCompare(a, 'en', { numeric: true }); }
   const SETS = Array.from(new Set(CARDS.map(c => c.set || E.setOf(c.id)).filter(Boolean))).sort(setSort);
@@ -39,7 +39,7 @@
   const COLOR_HEX = { '紅': 'red', '红': 'red', Red: 'red', '綠': 'green', '绿': 'green', Green: 'green', '藍': 'blue', '蓝': 'blue', Blue: 'blue',
     '紫': 'purple', Purple: 'purple', '黑': 'black', Black: 'black', '黃': 'yellow', '黄': 'yellow', Yellow: 'yellow' };
   const COLORS = Array.from(new Set(CARDS.flatMap(c => E.cardColors(c)))).filter(Boolean);
-  const CATS = { LEADER: '領航', CHARACTER: '角色', EVENT: '事件', STAGE: '場地' };
+  const CATS = { LEADER: '領航', CHARACTER: '角色', EVENT: '事件', STAGE: '場地', DON: 'DON!!' };
   const RARITIES = Array.from(new Set(CARDS.map(c => c.rarity).filter(Boolean)));
 
   // ----------------------------------------------------------- state
@@ -285,7 +285,7 @@
   }
   function shopUrl(id) {
     const p = PRICES.prices[id];
-    return (p && p.url) || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
+    return (p && p.url) || (byId[id] || {}).source || 'https://yuyu-tei.jp/sell/opc/s/search?search_word=' + encodeURIComponent(E.baseId(id));
   }
   /** Badge after a card's rarity in lists: 異圖 / 重印. SP cards need none: their rarity already reads SP. */
   function altBadge(c) {
@@ -611,11 +611,11 @@
       </div>
       <div class="cd-right">
         <div class="chips">${c.category ? `<span class="chip">${esc(CATS[c.category] || c.categoryRaw || c.category)}</span>` : ''}<span class="chip">${shownId(id)}</span>
-          ${c.rarity ? `<span class="chip strong">${esc(c.rarity)}</span>` : ''}${setCode ? `<button class="chip link" data-goset="${esc(setCode)}">${esc(setCode)} ›</button>` : ''}</div>
+          ${c.rarity && c.rarity !== c.category ? `<span class="chip strong">${esc(c.rarity)}</span>` : ''}${setCode ? `<button class="chip link" data-goset="${esc(setCode)}">${esc(setCode)} ›</button>` : ''}</div>
         <h2>${esc(c.name || id)}</h2>
         ${c.feature ? `<div class="muted">${esc(c.feature)}</div>` : ''}
         <div class="stats-tiles">
-          ${isLeader ? tile('生命值', c.life) : tile('費用', c.cost)}${tile('力量值', c.power)}${tile('反擊值', c.counter == null ? (c.category ? '-' : null) : c.counter)}
+          ${isLeader ? tile('生命值', c.life) : tile('費用', c.cost)}${tile('力量值', c.power)}${tile('反擊值', c.counter == null ? (c.category && c.category !== 'DON' ? '-' : null) : c.counter)}
           ${tile('顏色', c.color, c.color ? dots(c) + ' ' + esc(c.color) : '')}${tile('屬性', c.attribute)}${tile('擴張記號', c.block)}
         </div>
         <div class="box">
