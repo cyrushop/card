@@ -75,8 +75,16 @@ class AutoUpdate(unittest.TestCase):
     def test_lock_prevents_two_runs_at_once(self):
         self.set_mode(mode="auto")
         open(os.path.join(self.dir, "auto-update.lock"), "w").close()
-        self.assertEqual(au.run(self.dir, runner=self.runner()), [])
+        self.assertEqual(au.run(self.dir, runner=self.runner()), [("locked", au.LOCKED)])
         self.assertEqual(self.calls, [])
+
+    def test_a_skipped_run_fails_so_it_is_not_mistaken_for_an_update(self):
+        # A manual full update started from GitHub only sees the exit code: "skipped because
+        # another update is running" must not end as success.
+        open(os.path.join(self.dir, "auto-update.lock"), "w").close()
+        self.assertEqual(au.main(["--force"], data_dir=self.dir), au.LOCKED)
+        self.assertNotEqual(au.LOCKED, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "auto-update.json")), "nothing was run or recorded")
 
 
 if __name__ == "__main__":
