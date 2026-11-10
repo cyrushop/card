@@ -1,6 +1,8 @@
 """Checks on deploy/deploy.sh that do not need a Google Cloud account."""
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -104,6 +106,47 @@ class GitHubDeploy(unittest.TestCase):
         self.assertIn("service_account: github-deploy@", self.flow)
         for key in ("GCP_PROJECT=", "GCP_PROJECT_NUMBER=", "GCP_REGION=", "GCP_SERVICE="):
             self.assertIn(key, self.setup)
+
+
+class MacPillowOffer(unittest.TestCase):
+    """The Mac launchers offer Pillow once, so card pictures are saved compressed."""
+
+    def run_offer(self, answer, pip_ok):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = os.path.join(tmp, "py")
+            # A Python without Pillow; "pip install" succeeds (and Pillow is then importable) or fails.
+            with open(fake, "w") as f:
+                f.write("#!/bin/bash\n"
+                        "if [ \"$1\" = -m ]; then echo \"$@\" >> pip.log; %s; fi\n"
+                        "[ -f pillow-installed ] && exit 0; exit 1\n" % ("touch pillow-installed; exit 0" if pip_ok else "exit 1"))
+            os.chmod(fake, 0o755)
+            script = os.path.join(HERE, "..", "tools", "mac_pillow.sh")
+            out = subprocess.run(["bash", "-c", f'. "{script}" && offer_pillow "{fake}"'], cwd=tmp, input=answer + "\n",
+                                 capture_output=True, text=True, timeout=30)
+            pip = read(os.path.join(tmp, "pip.log")) if os.path.exists(os.path.join(tmp, "pip.log")) else ""
+            return out.stdout, pip, os.path.exists(os.path.join(tmp, "data", ".no-pillow"))
+
+    def test_yes_installs_pillow_for_this_user(self):
+        out, pip, marker = self.run_offer("", pip_ok=True)
+        self.assertIn("-m pip install --user", pip)
+        self.assertIn("已安裝 Pillow", out)
+        self.assertFalse(marker)
+
+    def test_no_is_remembered(self):
+        out, pip, marker = self.run_offer("n", pip_ok=True)
+        self.assertEqual(pip, "")
+        self.assertTrue(marker, "not asked again")
+
+    def test_a_failed_install_keeps_the_app_working(self):
+        out, pip, marker = self.run_offer("y", pip_ok=False)
+        self.assertIn("未能安裝 Pillow", out)
+        self.assertTrue(marker)
+
+    def test_both_launchers_use_it(self):
+        for name in ("OPCG-Start.command", "OPCG-Phone.command"):
+            s = read(os.path.join(HERE, "..", name))
+            self.assertIn('. tools/mac_pillow.sh && offer_pillow "$PY"', s)
+            self.assertLess(s.index("offer_pillow"), s.index("serve.py --port"), "asked before the app starts")
 
 
 if __name__ == "__main__":

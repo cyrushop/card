@@ -377,6 +377,26 @@ class CardUpdate(unittest.TestCase):
         finally:
             scrape_cards.net.get, scrape_cards.DATA = saved_get, saved_data
 
+    def test_pictures_found_whichever_way_they_were_saved(self):
+        import tempfile
+        saved = scrape_cards.DATA, scrape_cards._WIDTH
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                scrape_cards.DATA = tmp
+                os.makedirs(os.path.join(tmp, "images"))
+                for n in ("OP01-001.webp", "OP01-002.png"):
+                    open(os.path.join(tmp, "images", n), "wb").close()
+                cards = [{"id": i, "image": f"https://x/{i}.png?1"} for i in ("OP01-001", "OP01-002", "OP01-003")]
+                for width in (0, 400):  # Pillow missing / installed
+                    scrape_cards._WIDTH = width
+                    for c in cards:
+                        c.pop("localImage", None)
+                    scrape_cards.attach_local_images(cards)
+                    self.assertEqual([c.get("localImage") for c in cards],
+                                     ["../data/images/OP01-001.webp", "../data/images/OP01-002.png", None])
+        finally:
+            scrape_cards.DATA, scrape_cards._WIDTH = saved
+
     def test_online_version_stores_small_webp_pictures(self):
         """OPCG_IMAGE_WIDTH (set in the cloud image) shrinks pictures to WebP, and converts
         pictures downloaded before it was set without downloading them again."""

@@ -209,6 +209,8 @@ def download_images(cards, delay):
         fname = image_name(c)
         path = os.path.join(img_dir, fname)
         have = os.path.exists(path) and os.path.getsize(path) > 0
+        if not have and not width and os.path.exists(os.path.join(img_dir, _webp_name(c))):
+            have = True  # already saved compressed (e.g. Pillow was removed later): keep it
         same_url = manifest.get(c["id"], c["image"]) == c["image"]
         if have and same_url:
             manifest.setdefault(c["id"], c["image"])
@@ -300,8 +302,17 @@ def attach_local_images(cards):
     """Point cards at images already downloaded on an earlier run."""
     img_dir = os.path.join(DATA, "images")
     for c in cards:
-        if c.get("image") and os.path.exists(os.path.join(img_dir, image_name(c))):
-            c["localImage"] = "../data/images/" + image_name(c)
+        if not c.get("image"):
+            continue
+        # The picture as this run saves it, else as an earlier run saved it (compressed or original).
+        for name in (image_name(c), image_name(c, original=True), _webp_name(c)):
+            if os.path.exists(os.path.join(img_dir, name)):
+                c["localImage"] = "../data/images/" + name
+                break
+
+
+def _webp_name(card):
+    return re.sub(r"[^A-Za-z0-9_\-]", "_", card["id"]) + ".webp"
 
 
 def merge_existing(cards, series):
