@@ -105,6 +105,8 @@ gcloud run jobs executions list --job opcg-update --region asia-east2
 
 ## 自動部署（合併後由 GitHub 部署）
 
+**目前已停用**（`deploy/github-deploy.env` 已刪除，見「停用網上版本」）。如要重新啟用，按以下步驟重新加入該檔案。
+
 設定後，`main` 有新程式並通過自動測試，GitHub 便會自動部署網上服務及更新工作，不用再在 Cloud Shell 執行部署指令。GitHub 以短期憑證登入（Workload Identity Federation），**不會建立或儲存任何金鑰**，而且 Google 只接受來自 `cyrushop/card` 的 `main` 分支的請求。
 
 1. 在 Cloud Shell 的 `card` 資料夾執行一次（需先完成過一次 `deploy/deploy.sh`）：
@@ -161,6 +163,21 @@ gcloud storage cp data/collection.json gs://BUCKET/collection.json
 
 價目：
 https://cloud.google.com/run/pricing ・ https://cloud.google.com/storage/pricing ・ https://cloud.google.com/vpc/network-pricing ・ https://cloud.google.com/artifact-registry/pricing ・ https://cloud.google.com/build/pricing ・ https://cloud.google.com/iap/pricing ・ https://cloud.google.com/scheduler/pricing
+
+## 停用網上版本（只用電腦版）
+
+1. **先搬資料**：網上版「設定」→「匯出備份（JSON）」；電腦版「設定」→「匯入備份」，選該檔案，核對張數、牌組、評級卡及起始牌組一盒內容。
+2. **停止自動部署**：從程式庫刪除 `deploy/github-deploy.env`（2026-11 已刪除）。之後合併到 `main` 不會再部署到 Google Cloud；`.github/workflows/deploy.yml` 會顯示「not set up yet, nothing to do」。
+3. **刪除 Google Cloud 資源**（在 Cloud Shell 執行，二選一）：
+   * **刪除整個專案**（專案只作此用途時最簡單，所有收費即停止）：
+     ```bash
+     gcloud projects delete card-513703
+     ```
+     專案會先停用 30 日，期間可用 `gcloud projects undelete card-513703` 復原（需重新連結帳單帳戶；Cloud Storage 的資料可能早於 30 日刪除）。30 日後永久刪除。說明：https://docs.cloud.google.com/resource-manager/docs/delete-restore-projects
+   * **逐項刪除**（保留專案）：見下一節「停用或刪除」，另加
+     ```bash
+     gcloud artifacts repositories delete cloud-run-source-deploy --location asia-east2
+     ```
 
 ## 停用或刪除
 

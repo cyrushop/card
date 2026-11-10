@@ -61,6 +61,8 @@ python3 bot/scrape_decks.py
 
 ## 網上版本（Google Cloud，只限自己使用）
 
+**目前已停用，只用電腦版。** 自動部署已關閉；停用及刪除 Google Cloud 資源的步驟見 `deploy/README.md`「停用網上版本」。
+
 可部署到 Google Cloud Run，以 Google 帳戶登入後在任何地方使用，其他人無法進入。資料保存在 Cloud Storage。步驟、費用及注意事項見 [deploy/README.md](deploy/README.md)。
 
 ```bash
