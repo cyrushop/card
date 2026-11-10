@@ -46,6 +46,7 @@ jobs:
         run: |
           bash -n OPCG-Start.command
           bash -n OPCG-Phone.command
+          bash -n tools/mac_pillow.sh
           bash -n deploy/deploy.sh
           bash -n deploy/setup-github-deploy.sh
 

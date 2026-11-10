@@ -314,6 +314,22 @@ def configure(pin=None, emails=None):
     ALLOWED_EMAILS = {e.strip().lower() for e in (emails or "").split(",") if e.strip()}
 
 
+def local_image_width():
+    """Computer version: pictures are saved as 400 px WebP (about a fifth of the size: 1.1 GB of
+    originals becomes about 0.2 GB) when Pillow is installed. OPCG_IMAGE_WIDTH, when set, wins
+    (0 keeps the originals). Returns the width the bots will use, 0 for originals."""
+    if "OPCG_IMAGE_WIDTH" not in os.environ:
+        try:
+            import PIL.Image  # noqa: F401
+        except ImportError:
+            return 0
+        os.environ["OPCG_IMAGE_WIDTH"] = "400"
+    try:
+        return max(0, int(os.environ["OPCG_IMAGE_WIDTH"] or 0))
+    except ValueError:
+        return 0
+
+
 def main(argv=None):
     global CLOUD
     ap = argparse.ArgumentParser()
@@ -337,6 +353,9 @@ def main(argv=None):
     if ALLOWED_EMAILS:
         print("  allowed Google accounts: " + ", ".join(sorted(ALLOWED_EMAILS)))
     if not CLOUD:
+        width = local_image_width()
+        print(f"  card pictures: {width} px WebP" if width else
+              "  card pictures: originals (install Pillow to save them about five times smaller)")
         threading.Thread(target=auto_check_loop, daemon=True).start()
     if args.lan:
         for ip in lan_ips():

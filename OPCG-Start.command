@@ -50,6 +50,9 @@ if [ ! -f data/cards.json ]; then
   fi
 fi
 
+# 卡圖壓縮（只問一次）
+. tools/mac_pillow.sh && offer_pillow "$PY"
+
 # 4. 啟動伺服器及瀏覽器
 say_line "正在啟動 OPCG 卡庫：$URL"
 "$PY" -u serve.py --port "$PORT" &

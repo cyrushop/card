@@ -118,5 +118,33 @@ class CloudMode(unittest.TestCase):
             serve.configure()
 
 
+class LocalPictures(unittest.TestCase):
+    """Computer version: pictures are saved as 400 px WebP when Pillow is installed."""
+
+    def setUp(self):
+        self.saved = os.environ.pop("OPCG_IMAGE_WIDTH", None)
+
+    def tearDown(self):
+        os.environ.pop("OPCG_IMAGE_WIDTH", None)
+        if self.saved is not None:
+            os.environ["OPCG_IMAGE_WIDTH"] = self.saved
+
+    def test_default_when_pillow_is_installed(self):
+        try:
+            import PIL.Image  # noqa: F401
+        except ImportError:
+            self.assertEqual(serve.local_image_width(), 0)
+            self.assertNotIn("OPCG_IMAGE_WIDTH", os.environ)
+            return
+        self.assertEqual(serve.local_image_width(), 400)
+        self.assertEqual(os.environ["OPCG_IMAGE_WIDTH"], "400", "passed on to the bots")
+
+    def test_a_chosen_width_wins(self):
+        os.environ["OPCG_IMAGE_WIDTH"] = "0"
+        self.assertEqual(serve.local_image_width(), 0, "0 keeps the originals")
+        os.environ["OPCG_IMAGE_WIDTH"] = "600"
+        self.assertEqual(serve.local_image_width(), 600)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

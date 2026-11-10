@@ -31,6 +31,9 @@ if [ ! -s data/pin.txt ]; then
 fi
 PIN="$(cat data/pin.txt)"
 
+# 卡圖壓縮（只問一次）
+. tools/mac_pillow.sh && offer_pillow "$PY"
+
 IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)"
 printf '\n\033[1m手機（同一個 Wi-Fi）請開啟：http://%s:%s\033[0m\n' "${IP:-本機 IP}" "$PORT"
 echo "PIN：$PIN   （如要更改 PIN：刪除 data/pin.txt 後再按兩下此檔案）"
