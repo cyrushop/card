@@ -45,12 +45,12 @@ class AutoUpdate(unittest.TestCase):
         self.assertEqual(au.run(self.dir, runner=self.runner()), [])
 
     def test_force_runs_even_in_manual_mode(self):
-        self.set_mode(mode="manual", prices=False)
+        self.set_mode(mode="manual", prices=False, products=False)
         au.run(self.dir, force=True, runner=self.runner())
         self.assertEqual(self.calls, ["scrape_cards.py", "scrape_decks.py"])
 
     def test_daily_schedule(self):
-        self.set_mode(mode="auto", every="daily", decks=False)
+        self.set_mode(mode="auto", every="daily", decks=False, products=False)
         t0 = 1_800_000_000
         self.assertEqual(au.run(self.dir, now=t0, runner=self.runner()), [("cards", 0), ("prices", 0)])
         self.assertEqual(self.status()["tasks"]["cards"]["summary"], ["更新結果：", "新系列：沒有", "新卡：0 張"])
@@ -61,7 +61,7 @@ class AutoUpdate(unittest.TestCase):
         self.assertEqual(self.calls, ["scrape_cards.py", "scrape_prices.py"])
 
     def test_weekly_and_failures_are_retried(self):
-        self.set_mode(mode="auto", every="weekly", prices=False, decks=False)
+        self.set_mode(mode="auto", every="weekly", prices=False, decks=False, products=False)
         conf = au.settings(self.dir)
         now = 1_800_000_000
         self.assertEqual(au.due_tasks(conf, {"cards": {"okAt": now - 3 * DAY}}, now), [])
@@ -99,7 +99,7 @@ class AutoUpdate(unittest.TestCase):
         # the run succeeds, and the failure stays on record for the app.
         self.set_mode(mode="auto")
         res = au.run(self.dir, runner=self.per_task_runner({"scrape_decks.py": 1}))
-        self.assertEqual(res, [("cards", 0), ("prices", 0), ("decks", 1)])
+        self.assertEqual(res, [("cards", 0), ("prices", 0), ("decks", 1), ("products", 0)])
         self.assertEqual(au.exit_code(res), 0)
         self.assertEqual(self.status()["tasks"]["decks"]["code"], 1)
         self.assertNotIn("okAt", self.status()["tasks"]["decks"], "tried again next time")
@@ -118,7 +118,15 @@ class AutoUpdate(unittest.TestCase):
             self.assertEqual(au.main(["--force"], data_dir=self.dir), 0)
         finally:
             au.run.__defaults__ = au.run.__defaults__[:-1] + (saved,)
-        self.assertEqual(self.calls, ["scrape_cards.py", "scrape_prices.py", "scrape_decks.py"])
+        self.assertEqual(self.calls, ["scrape_cards.py", "scrape_prices.py", "scrape_decks.py", "scrape_products.py"])
+
+
+    def test_release_dates_are_read_by_default_and_never_fail_the_update(self):
+        self.set_mode(mode="auto")
+        self.assertIn("products", au.settings(self.dir)["tasks"])
+        res = au.run(self.dir, runner=self.per_task_runner({"scrape_products.py": 1}))
+        self.assertEqual(res[-1], ("products", 1))
+        self.assertEqual(au.exit_code(res), 0)
 
 
 if __name__ == "__main__":

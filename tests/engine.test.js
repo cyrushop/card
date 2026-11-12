@@ -404,4 +404,18 @@ t('R / SR / SEC short of 4 copies, every version of a number counted together', 
   assert.deepStrictEqual(E.shortOfPlayset(cards, owned, 'OP01', ['SR']).map(x => x.id), ['OP01-012']);
 });
 
+t('new series: upcoming, out but not in the card list yet, odd dates', () => {
+  const P = (code, date) => ({ code, tag: `【${code.replace(/(\d+)$/, '-$1')}】`, date, title: code });
+  const products = [P('ST37', '2026-12-19'), P('OP18', '2026-11-21'), P('OP17', '2026-08-22'), P('OP19', '2026-02-27'), P('PEB01', '2026-04-24')];
+  const codes = ['OP17', 'OP16'], labels = ['補充包 世界最強的戰士【OP-17】', '高級特殊補充包【PEB-01】'];
+  let s = E.releaseStatus(products, codes, labels, '2026-11-12');
+  assert.deepStrictEqual(s.upcoming.map(p => p.code), ['OP18', 'ST37'], 'soonest first');
+  assert.deepStrictEqual(s.released, []);
+  assert.deepStrictEqual(s.odd.map(p => p.code), ['OP19'], 'long past and not in the list: date doubtful; PEB01 found by its label');
+  s = E.releaseStatus(products, codes, labels, '2026-12-20');
+  assert.deepStrictEqual(s.released.map(p => p.code), ['OP18', 'ST37'], 'out, not in the card list yet: remind');
+  s = E.releaseStatus(products, codes.concat('OP18', 'ST37'), labels, '2026-12-20');
+  assert.deepStrictEqual(s.released, [], 'reminder ends once the card list has them');
+});
+
 console.log(`\n${passed} tests passed`);

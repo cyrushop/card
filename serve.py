@@ -47,13 +47,14 @@ BOTS = {
     "update": [os.path.join(ROOT, "bot", "scrape_cards.py"), "--images"],  # new series, new cards, new/changed images
     "decks": [os.path.join(ROOT, "bot", "scrape_decks.py")],
     "prices": [os.path.join(ROOT, "bot", "scrape_prices.py")],
+    "products": [os.path.join(ROOT, "bot", "scrape_products.py")],  # release dates of new series
     "auto": [os.path.join(ROOT, "bot", "auto_update.py"), "--force"],     # 「立即執行一次」
     "auto-check": [os.path.join(ROOT, "bot", "auto_update.py")],          # scheduled check: runs only what is due
 }
 AUTO_CHECK_EVERY = 30 * 60  # seconds, computer version only (online: Cloud Scheduler)
 # Files under data/ the browser may load. Everything else there (collection.json,
 # backups, raw pages, the PIN) is only reachable through the API.
-PUBLIC_DATA = {"cards.js", "cards.json", "decks.js", "decks.json", "prices.js", "prices.json"}
+PUBLIC_DATA = {"cards.js", "cards.json", "decks.js", "decks.json", "prices.js", "prices.json", "products.js", "products.json"}
 IAP_EMAIL_HEADER = "X-Goog-Authenticated-User-Email"
 
 PIN = None             # set by --pin / OPCG_PIN

@@ -603,6 +603,29 @@
     return out.sort((a, b) => b.short - a.short || a.id.localeCompare(b.id, 'en', { numeric: true }));
   }
 
+  /**
+   * New series against the card list, from the official product list (products.json).
+   * `codes`: series codes the card list has; `labels`: its series names (they carry 【OP-18】 tags).
+   * Returns { upcoming, released, odd }:
+   *   upcoming  out after `today`, soonest first
+   *   released  out within the last `recentDays` days but not in the card list yet: time to update
+   *   odd       out longer ago and still not in the card list: the date on the site may be wrong
+   */
+  function releaseStatus(products, codes, labels, today, recentDays) {
+    const have = new Set(codes || []);
+    const inList = p => have.has(p.code) || (labels || []).some(l => String(l).includes(p.tag));
+    const ago = d => (Date.parse(today) - Date.parse(d)) / 86400000;
+    const out = { upcoming: [], released: [], odd: [] };
+    for (const p of products || []) {
+      if (!p || !p.date || !p.code) continue;
+      if (p.date > today) out.upcoming.push(p);
+      else if (!inList(p)) (ago(p.date) <= (recentDays || 60) ? out.released : out.odd).push(p);
+    }
+    const byDate = (a, b) => a.date.localeCompare(b.date) || a.code.localeCompare(b.code);
+    out.upcoming.sort(byDate); out.released.sort(byDate); out.odd.sort(byDate);
+    return out;
+  }
+
   /** Undo a bulkSet: put back the counts it replaced. */
   function undoBulk(owned, prev) {
     const next = Object.assign({}, owned);
@@ -655,7 +678,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, releaseStatus, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;

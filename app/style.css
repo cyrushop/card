@@ -353,6 +353,11 @@ h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
   background: var(--panel); border: 1px dashed var(--accent); border-radius: 10px; }
 .ph[hidden] { display: none; }
 
+/* home: new series release dates */
+.release-due { border-color: var(--accent); border-style: solid; }
+.rel-list { margin: 4px 0 6px; padding-left: 18px; }
+.rel-list li { margin: 3px 0; }
+
 /* starter decks: add whole boxes */
 .box-bar .boxn { display: inline-flex; align-items: center; gap: 4px; }
 .box-bar #bx-n { width: 64px; text-align: center; font-weight: 700; }
