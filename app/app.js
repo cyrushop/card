@@ -10,6 +10,8 @@
   const CARDS = (window.OPCG_CARDS && window.OPCG_CARDS.cards) || [];
   const META = (window.OPCG_DECKS && window.OPCG_DECKS.decks) || [];
   const PRICES = window.OPCG_PRICES || { prices: {} };
+  // Release dates of new series, from the official product list (bot/scrape_products.py).
+  const PRODUCTS = window.OPCG_PRODUCTS || { products: [] };
   const DEFAULT_RATE = 0.049; // JPY -> HKD (mid-Aug 2026); the price bot refreshes it
   const byId = {};
   for (const c of CARDS) {
@@ -53,7 +55,7 @@
   function blankState() {
     return { version: 1, owned: {}, decks: [], manualPrices: {}, openLog: [], graded: [], boxes: {},
       settings: { includeParallels: false, quickSet: '', rate: '', factor: 1, valuableMin: 50,
-        autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true } } };
+        autoUpdate: { mode: 'manual', every: 'daily', cards: true, prices: true, decks: true, products: true } } };
   }
   function normalise(s) {
     const b = blankState();
@@ -735,6 +737,55 @@
     tick();
   }
 
+  // ------------------------------------------------------ new series: release dates
+  function todayIso() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const daysTo = date => Math.round((Date.parse(date) - Date.parse(todayIso())) / 86400000);
+  const prodName = p => `${p.tag.replace(/[【】]/g, '')} ${p.title.replace(p.tag, '').replace(/^(補充包|特殊補充包|高級特殊補充包|高級補充包|起始牌組(EX)?)\s*/, '').trim()}`.trim();
+  /**
+   * Home: a reminder once a new series is out but not in the card list yet, the series coming soon,
+   * and a button to read the latest dates from the official product list.
+   */
+  function releaseHtml() {
+    const labels = ((window.OPCG_CARDS && window.OPCG_CARDS.series) || []).map(x => x.label);
+    const s = E.releaseStatus(PRODUCTS.products, SET_CODES, labels, todayIso());
+    const link = p => `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(prodName(p))}</a>`;
+    const btn = serverOk ? '<button class="see" data-releases="1">查看最新發售日期</button>' : '';
+    const fetched = PRODUCTS.fetchedAt ? `官網產品列表 · 讀取於 ${esc(PRODUCTS.fetchedAt.slice(0, 10))}` : '';
+    return `${s.released.length ? `<div class="notice release-due" role="status"><b>新系列已發售，卡表仍未加入：</b>
+        ${s.released.map(p => `${link(p)}（${esc(p.date)}）`).join('、')}
+        <div class="actions" style="margin-top:8px">${serverOk ? '<button class="primary small" data-update="1">檢查新系列及卡圖</button>' : ''}
+        <span class="muted small">官方卡表有時在發售後數日才加入；檢查後仍未有，請過幾日再試。</span></div></div>` : ''}
+      <section class="home-sec releases"><div class="sec-head"><h2>即將推出 <span class="count">${s.upcoming.length}</span></h2><div class="actions">${btn}</div></div>
+        <div id="h-releases" class="muted small" hidden></div>
+        ${s.upcoming.length ? `<ul class="rel-list">${s.upcoming.map(p => `<li>${link(p)} <span class="muted">· ${esc(p.date)}（${daysTo(p.date) === 0 ? '今日' : `${daysTo(p.date)} 日後`}）</span></li>`).join('')}</ul>`
+          : `<p class="muted small">${PRODUCTS.products.length ? '官網未有公佈即將推出的系列。' : '未有資料：按「查看最新發售日期」從官網讀取。'}</p>`}
+        ${s.odd.length ? `<p class="muted small">以下產品官網的發售日期已過，但卡表仍未有，官網日期可能有誤：${s.odd.map(p => `${esc(prodName(p))}（${esc(p.date)}）`).join('、')}</p>` : ''}
+        ${fetched ? `<p class="muted small">${fetched}</p>` : ''}</section>`;
+  }
+  /** Read the official product list now (bot/scrape_products.py) and show the result. */
+  async function runReleases(btn) {
+    const box = $('#h-releases');
+    btn.disabled = true; box.hidden = false; box.textContent = '正在讀取官網產品列表…';
+    try { await fetch('/api/bot/products', { method: 'POST' }); } catch (e) { box.textContent = '無法連接本機伺服器。'; btn.disabled = false; return; }
+    const tick = async () => {
+      let job;
+      try { job = ((await (await fetch('/api/bot', { cache: 'no-store' })).json()).jobs || {}).products; } catch (e) { job = null; }
+      if (!job || job.running) { setTimeout(tick, 1000); return; }
+      const lines = (job.log || '').trim().split('\n').filter(Boolean);
+      if (job.code === 0) {
+        box.textContent = lines.slice(lines.findIndex(l => l.startsWith('更新結果'))).join('　') || '已讀取';
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        box.textContent = '讀取失敗：' + (lines.slice(-1)[0] || '') ;
+        btn.disabled = false;
+      }
+    };
+    tick();
+  }
+
   // =============================================================== HOME
   function renderHome() {
     const el = $('#tab-home');
@@ -762,6 +813,7 @@
         <div class="kpi" role="button" tabindex="0" data-go="mine"><span>牌組</span><b>${counts('plan')} / ${counts('built')} / ${counts('sold')}</b><small>計劃中 / 已組好 / 已售出</small></div>
       </div>
       ${updateNoticeHtml()}
+      ${releaseHtml()}
       <section class="home-sec"><div class="sec-head"><h2>全部系列 <span class="count">${mySets.length}</span></h2>
         <div class="actions">${serverOk ? '<button class="see" data-update="1">檢查新系列及卡圖</button>' : ''}<button class="see" data-go="sets">按類別查看 ›</button></div></div>
         <div id="h-update" class="muted small" hidden></div>
@@ -801,6 +853,8 @@
       if (all) openCollection(input.value);
       const up = e.target.closest('[data-update]');
       if (up) runUpdate(up);
+      const rel = e.target.closest('[data-releases]');
+      if (rel) runReleases(rel);
       const fresh = e.target.closest('[data-fresh]');
       if (fresh) openCollection('新');
     };
@@ -1722,9 +1776,9 @@
   function autoSetting() {
     const a = settings().autoUpdate || {};
     return { mode: a.mode === 'auto' ? 'auto' : 'manual', every: a.every === 'weekly' ? 'weekly' : 'daily',
-      cards: a.cards !== false, prices: a.prices !== false, decks: a.decks !== false };
+      cards: a.cards !== false, prices: a.prices !== false, decks: a.decks !== false, products: a.products !== false };
   }
-  const AUTO_LABEL = { cards: '卡表及卡圖（新系列、新卡、新卡圖）', prices: '價格', decks: '熱門牌組' };
+  const AUTO_LABEL = { cards: '卡表及卡圖（新系列、新卡、新卡圖）', prices: '價格', decks: '熱門牌組', products: '新系列發售日期' };
   let autoInfo = null; // { cloud, status } from the server
   function autoPanelHtml() {
     const a = autoSetting();

@@ -30,11 +30,12 @@ TASKS = {
     "cards": ([os.path.join(HERE, "scrape_cards.py"), "--images"], "卡表及卡圖"),
     "prices": ([os.path.join(HERE, "scrape_prices.py")], "價格"),
     "decks": ([os.path.join(HERE, "scrape_decks.py")], "熱門牌組"),
+    "products": ([os.path.join(HERE, "scrape_products.py")], "新系列發售日期"),
 }
 # Extras: when one of these fails the run still counts as a success if the card list and prices
 # updated (the failure is recorded and shown in the app). The deck site can refuse automatic
 # readers, which should not mark the whole update as failed.
-OPTIONAL = {"decks"}
+OPTIONAL = {"decks", "products"}
 INTERVAL = {"daily": 20 * 3600, "weekly": 6.5 * 86400}  # a little under a day / a week, so a fixed daily time never slips
 LOCK_STALE = 4 * 3600
 # Exit code when another update holds the lock: the run did nothing, and it must not look like a

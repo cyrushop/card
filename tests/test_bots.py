@@ -13,6 +13,7 @@ import don  # noqa: E402
 import scrape_cards  # noqa: E402
 import scrape_decks  # noqa: E402
 import scrape_prices  # noqa: E402
+import scrape_products  # noqa: E402
 
 CARDLIST = """
 <html><body>
@@ -565,6 +566,31 @@ class DonCards(unittest.TestCase):
         self.assertEqual(asked, ["https://yuyu-tei.jp/sell/opc/s/don"])
         self.assertEqual({k: v["jpy"] for k, v in prices.items()},
                          {"DON-001": 30, "DON-002": 420, "DON-004": 500, "DON-015": 2480})
+
+
+# Layout of the official product list (Nov 2026).
+PRODUCT_LIST = """<ul>
+<li class="linkListColBox" data-cat="decks">
+  <a href="https://asia-tc.onepiece-cardgame.com/products/st37.html" class="linkListColItem">
+    <div class="linkListColDetail"><div class="linkListColHead"><span class="linkListColCat">DECKS</span></div>
+    <h4 class="linkListColTitle">起始牌組 沙漠公主與海賊們【ST-37】</h4>
+    <p class="linkListColDate"><span class="head">發售日期</span><time class="newsDate" datetime="2026-12-19">2026.12.19</time></p></div></a></li>
+<li class="linkListColBox" data-cat="boosters">
+  <a href="/products/op18.html" class="linkListColItem"><h4 class="linkListColTitle">補充包 神的支配【OP-18】</h4>
+    <p><time class="newsDate" datetime="2026-11-21">2026.11.21</time></p></a></li>
+<li class="linkListColBox" data-cat="others">
+  <a href="/products/sleeve047.html"><h4 class="linkListColTitle">官方卡套 17</h4><time datetime="2026-12-19"></time></a></li>
+</ul>"""
+
+
+class ProductBot(unittest.TestCase):
+    def test_parse(self):
+        items = scrape_products.parse(PRODUCT_LIST, "https://asia-tc.onepiece-cardgame.com/products/?subcategory=all")
+        self.assertEqual([(p["code"], p["tag"], p["date"], p["kind"]) for p in items],
+                         [("ST37", "【ST-37】", "2026-12-19", "decks"), ("OP18", "【OP-18】", "2026-11-21", "boosters")],
+                         "sleeves and other products without a series code are left out")
+        self.assertEqual(items[1]["url"], "https://asia-tc.onepiece-cardgame.com/products/op18.html")
+        self.assertEqual(items[0]["title"], "起始牌組 沙漠公主與海賊們【ST-37】")
 
 
 if __name__ == "__main__":
