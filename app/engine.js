@@ -626,6 +626,15 @@
     return out;
   }
 
+  /** Rarity filter choices that stand for more than one rarity. */
+  const RARITY_GROUPS = { 'C＋UC': ['C', 'UC'], 'R＋SR': ['R', 'SR'] };
+  /** Does a card match a rarity filter choice: '' (all), one rarity, or a group such as 'R＋SR'? */
+  function rarityIn(card, choice) {
+    if (!choice) return true;
+    const r = (card && card.rarity) || '';
+    return (RARITY_GROUPS[choice] || [choice]).includes(r);
+  }
+
   /** Undo a bulkSet: put back the counts it replaced. */
   function undoBulk(owned, prev) {
     const next = Object.assign({}, owned);
@@ -678,7 +687,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, releaseStatus, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, RARITY_GROUPS, rarityIn, releaseStatus, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;
