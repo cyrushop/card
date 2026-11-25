@@ -160,6 +160,10 @@ class Handler(SimpleHTTPRequestHandler):
             # Card pictures rarely change: let the browser keep them for a week, so each picture
             # crosses the network once instead of on every visit (online data transfer is billed).
             self.send_header("Cache-Control", "private, max-age=604800")
+        elif self.path.startswith("/app/"):
+            # The program itself: ask the server each time whether it changed (a quick 304 when it
+            # has not), so a new version shows on the next reload instead of a copy kept in the browser.
+            self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
