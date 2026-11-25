@@ -105,8 +105,6 @@ gcloud run jobs executions list --job opcg-update --region asia-east2
 
 ## 自動部署（合併後由 GitHub 部署）
 
-**目前已停用**（`deploy/github-deploy.env` 已刪除，見「停用網上版本」）。如要重新啟用，按以下步驟重新加入該檔案。
-
 設定後，`main` 有新程式並通過自動測試，GitHub 便會自動部署網上服務及更新工作，不用再在 Cloud Shell 執行部署指令。GitHub 以短期憑證登入（Workload Identity Federation），**不會建立或儲存任何金鑰**，而且 Google 只接受來自 `cyrushop/card` 的 `main` 分支的請求。
 
 1. 在 Cloud Shell 的 `card` 資料夾執行一次（需先完成過一次 `deploy/deploy.sh`）：
@@ -167,7 +165,7 @@ https://cloud.google.com/run/pricing ・ https://cloud.google.com/storage/pricin
 ## 停用網上版本（只用電腦版）
 
 1. **先搬資料**：網上版「設定」→「匯出備份（JSON）」；電腦版「設定」→「匯入備份」，選該檔案，核對張數、牌組、評級卡及起始牌組一盒內容。
-2. **停止自動部署**：從程式庫刪除 `deploy/github-deploy.env`（2026-11 已刪除）。之後合併到 `main` 不會再部署到 Google Cloud；`.github/workflows/deploy.yml` 會顯示「not set up yet, nothing to do」。
+2. **停止自動部署**：從程式庫刪除 `deploy/github-deploy.env`。之後合併到 `main` 不會再部署到 Google Cloud；`.github/workflows/deploy.yml` 會顯示「not set up yet, nothing to do」。
 3. **刪除 Google Cloud 資源**（在 Cloud Shell 執行，二選一）：
    * **刪除整個專案**（專案只作此用途時最簡單，所有收費即停止）：
      ```bash
