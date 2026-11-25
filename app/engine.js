@@ -635,6 +635,18 @@
     return (RARITY_GROUPS[choice] || [choice]).includes(r);
   }
 
+  /**
+   * Does a card match the ticked rarities? [] means all. A tick is a rarity (L, C, UC, R, SR, SEC ...)
+   * or a kind of version (SP, 異圖, 重印); several ticks show the cards of any of them.
+   */
+  function rarityPick(card, picks) {
+    if (!picks || !picks.length) return true;
+    card = card || {};
+    if (picks.includes(normRarity(card.rarity)) || picks.includes(card.rarity || '')) return true;
+    const v = variantLabel(card);
+    return !!v && picks.includes(v);
+  }
+
   /** Undo a bulkSet: put back the counts it replaced. */
   function undoBulk(owned, prev) {
     const next = Object.assign({}, owned);
@@ -687,7 +699,7 @@
     GRADERS, gradeOptions, gradedSearchUrls, quickId, parseDeckText, deckToText, toDg, normCategory, leaderOf,
     ownedTotals, reservedTotals, availableTotals, deckStatus, validateDeck, cardColors,
     sellDeck, shoppingList, setOf, historyChange, makePricer, deckCost, missingCost, collectionValue,
-    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, RARITY_GROUPS, rarityIn, releaseStatus, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
+    parseQuery, matchCard, SET_GROUPS, setGroup, inSet, releasedIn, setProgress, shortOfPlayset, RARITY_GROUPS, rarityIn, rarityPick, releaseStatus, bulkSet, undoBulk, addBoxes, recipeFromText, recipeTotal, isoDate, deckMetaFromUrl, parseDeckImports,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OPCGEngine = api;

@@ -353,6 +353,11 @@ h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
   background: var(--panel); border: 1px dashed var(--accent); border-radius: 10px; }
 .ph[hidden] { display: none; }
 
+/* rarity ticks: one row, tap to show / hide each rarity */
+.rar-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+.rar-pick .chip { cursor: pointer; font-size: 13px; padding: 4px 12px; color: var(--ink); }
+.rar-pick .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
 /* home: app version, top right */
 .home-ver { text-align: right; font-size: 12px; color: var(--muted); margin: -6px 2px 6px; }
 

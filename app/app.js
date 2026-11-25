@@ -476,14 +476,18 @@
   }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelps(); });
   function openCollection(q) {
-    cf.q = q || ''; cf.set = ''; cf.color = ''; cf.cat = ''; cf.rarity = ''; cf.owned = ''; cf.limit = 120;
+    cf.q = q || ''; cf.set = ''; cf.color = ''; cf.cat = ''; cf.rarities = []; cf.owned = ''; cf.limit = 120;
     const el = $('#tab-collection');
-    if (el.dataset.ready) for (const k of ['q', 'set', 'color', 'cat', 'rarity', 'owned']) $('#cf-' + k).value = cf[k];
+    if (el.dataset.ready) for (const k of ['q', 'set', 'color', 'cat', 'owned']) $('#cf-' + k).value = cf[k];
     showTab('collection');
   }
 
   // ======================================================== COLLECTION
-  const cf = { q: '', set: '', color: '', cat: '', rarity: '', owned: '', sort: 'id', limit: 120 };
+  const cf = { q: '', set: '', color: '', cat: '', rarities: [], owned: '', sort: 'id', limit: 120 };
+  /** Rarities to tick on the collection page, in the usual order (SP卡 shown as SP). */
+  function collectionRarities() {
+    return Array.from(new Set(RARITIES.map(r => E.normRarity(r)))).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+  }
   let cfUndo = null; // { prev, label } after 「符合篩選的卡全部 ∞」, for undo
   function collectionItems() {
     const ids = new Set(CARDS.map(c => c.id));
@@ -495,7 +499,7 @@
       if (cf.set && (c.set || E.setOf(c.id)) !== cf.set && !(c.series || []).some(s => s.code === cf.set)) return false;
       if (cf.color && !E.cardColors(c).includes(cf.color)) return false;
       if (cf.cat && c.category !== cf.cat) return false;
-      if (cf.rarity && !E.rarityIn(c, cf.rarity)) return false;
+      if (!E.rarityPick(c, cf.rarities)) return false;
       if (cf.owned === 'have' && !ownedOf(c.id)) return false;
       if (cf.owned === 'none' && ownedOf(c.id)) return false;
       if (cf.owned === 'spare' && !(ownedOf(c.id) > 4)) return false;
@@ -522,16 +526,20 @@
           <select id="cf-set"><option value="">全部系列</option>${SETS.map(s => opt(s, s)).join('')}</select>
           <select id="cf-color"><option value="">全部顏色</option>${COLORS.map(c => opt(c, c)).join('')}</select>
           <select id="cf-cat"><option value="">全部類別</option>${Object.entries(CATS).map(([k, v]) => opt(k, v)).join('')}</select>
-          <select id="cf-rarity"><option value="">全部稀有度</option>${rarityGroupsFor(RARITIES).concat(RARITIES).map(r => opt(r, r)).join('')}</select>
           <select id="cf-owned"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有</option><option value="spare">多於 4 張</option><option value="reserved">已預留給牌組</option></select>
           <select id="cf-sort"><option value="id">按編號</option><option value="owned">按數量</option><option value="cost">按費用</option><option value="price">按價格</option></select>
           </div>
         </div>
+        <div id="cf-rar"></div>
         <div class="stats" id="cf-stats"></div>
         <div class="grid" id="cf-grid"></div>
         <button class="more" id="cf-more">顯示更多</button>`;
       el.dataset.ready = '1';
-      for (const k of ['q', 'set', 'color', 'cat', 'rarity', 'owned', 'sort']) {
+      $('#cf-rar').addEventListener('click', e => {
+        const b = e.target.closest('[data-cfrar]');
+        if (b) { cf.rarities = toggleRarity(cf.rarities, b.dataset.cfrar); cf.limit = 120; drawGrid(); }
+      });
+      for (const k of ['q', 'set', 'color', 'cat', 'owned', 'sort']) {
         const input = $('#cf-' + k);
         input.value = cf[k];
         input.addEventListener(k === 'q' ? 'input' : 'change', () => { cf[k] = input.value; cf.limit = 120; drawGrid(); });
@@ -539,7 +547,7 @@
       $('#cf-more').addEventListener('click', () => { cf.limit += 240; drawGrid(); });
       $('#cf-stats').addEventListener('click', async e => {
         if (e.target.closest('#cf-allinf')) {
-          if (!['q', 'set', 'color', 'cat', 'rarity', 'owned'].some(k => cf[k])) { toast('請先篩選（例如選系列或稀有度），以免把整個卡庫設為 ∞'); return; }
+          if (!['q', 'set', 'color', 'cat', 'owned'].some(k => cf[k]) && !cf.rarities.length) { toast('請先篩選（例如選系列或稀有度），以免把整個卡庫設為 ∞'); return; }
           const r = await setAllInf(collectionItems().map(c => c.id), '符合篩選');
           if (r) { cfUndo = { prev: r.prev, label: `${r.n} 款設為 ∞` }; drawGrid(); }
         }
@@ -564,6 +572,7 @@
     drawGrid();
   }
   function drawGrid() {
+    $('#cf-rar').innerHTML = rarityTicksHtml(collectionRarities(), cf.rarities, 'data-cfrar');
     const list = collectionItems();
     const reserved = E.reservedTotals(state.decks);
     const totalCopies = E.totalCopies(state.owned);
@@ -894,7 +903,7 @@
 
   // =============================================================== SETS
   // Starter decks are bought whole, 異圖 and SP included, so their pages show those versions by default.
-  const sv = { set: '', parallels: false, parallelsST: true, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
+  const sv = { set: '', rarities: [], parallels: false, parallelsST: true, show: '', sort: 'id', mode: 'grid', rarity: '', bulkOpen: false,
     bulkRarity: 'C', bulkMode: 'add', bulkN: 1, boxN: 1, boxEdit: false };
   const isStarter = code => E.setGroup(code) === '起始牌組';
   /** Whether 異圖 / SP count for a series: starter decks have their own setting. */
@@ -945,7 +954,7 @@
   const isBooster = code => ['補充包', '特殊補充包', '高級補充包'].includes(E.setGroup(code));
   const shortMode = () => sv.show === 'short4' && isBooster(sv.set);
   function shortList() {
-    const chosen = (E.RARITY_GROUPS[sv.rarity] || [sv.rarity]).filter(r => PLAYSET_RARITIES.includes(r));
+    const chosen = sv.rarities.filter(r => PLAYSET_RARITIES.includes(r));
     const rar = chosen.length ? chosen : PLAYSET_RARITIES;
     return E.shortOfPlayset(CARDS, state.owned, sv.set, rar, PLAYSET);
   }
@@ -972,12 +981,11 @@
       if (sv.sort === 'price') { const pr = pricer(); const v = c => (pr(c.id) || { hkd: -1 }).hkd; list.sort((a, b) => v(b) - v(a)); }
       return list;
     }
-    // Choosing SP / 異圖 / 重印 shows those versions even when "包括異圖及 SP" is off.
-    const pickVersion = VERSION_KINDS.includes(sv.rarity);
+    // Ticking SP / 異圖 / 重印 shows those versions even when "包括異圖及 SP" is off.
+    const picks = sv.rarities;
+    const pickVersion = picks.some(p => VERSION_KINDS.includes(p));
     let list = CARDS.filter(c => E.inSet(c, sv.set) && (parOf(sv.set) || pickVersion || c.id === E.baseId(c.id)));
-    if (sv.rarity === 'SP') list = list.filter(c => c.rarity === 'SP');
-    else if (pickVersion) list = list.filter(c => E.variantLabel(c) === sv.rarity);
-    else if (sv.rarity) list = list.filter(c => E.rarityIn(c, sv.rarity));
+    list = list.filter(c => (c.id === E.baseId(c.id) || parOf(sv.set)) ? E.rarityPick(c, picks) : picks.includes(E.variantLabel(c)));
     if (sv.show === 'have') list = list.filter(c => ownedOf(c.id));
     if (sv.show === 'none') list = list.filter(c => !ownedOf(c.id));
     const cmp = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -1019,12 +1027,18 @@
   function setFilterOptions() {
     const kinds = new Set(CARDS.filter(c => E.inSet(c, sv.set)).map(c => E.variantLabel(c)).filter(Boolean));
     const out = setRarities().concat(VERSION_KINDS.filter(k => kinds.has(k)));
-    const sorted = Array.from(new Set(out)).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
-    return rarityGroupsFor(setRarities()).concat(sorted);
+    return Array.from(new Set(out)).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
   }
-  /** C＋UC / R＋SR, offered when the cards have both rarities of the group. */
-  function rarityGroupsFor(rarities) {
-    return Object.entries(E.RARITY_GROUPS).filter(([, rs]) => rs.every(r => rarities.includes(r))).map(([k]) => k);
+  /** A row of rarity ticks: tap to show / hide each; nothing ticked shows all. */
+  function rarityTicksHtml(options, picks, attr) {
+    return `<div class="rar-pick" role="group" aria-label="稀有度（可選多個）"><span class="small muted">稀有度</span>
+      <button class="chip${picks.length ? '' : ' on'}" ${attr}="" aria-pressed="${!picks.length}">全部</button>
+      ${options.map(r => `<button class="chip${picks.includes(r) ? ' on' : ''}" ${attr}="${esc(r)}" aria-pressed="${picks.includes(r)}">${esc(r)}</button>`).join('')}</div>`;
+  }
+  /** Tick or untick one rarity ('' clears every tick). */
+  function toggleRarity(picks, r) {
+    if (!r) return [];
+    return picks.includes(r) ? picks.filter(x => x !== r) : picks.concat(r);
   }
   /**
    * Set every card in `ids` to ∞ after asking; returns the counts it replaced (for undo), or null.
@@ -1161,7 +1175,6 @@
           <button data-mode="grid" class="${batch ? '' : 'on'}">卡圖</button><button data-mode="batch" class="${batch ? 'on' : ''}">批量輸入</button></div>
         ${help('<b>批量輸入</b><br>每張卡一個數字欄。輸入數量後按 <kbd>Enter</kbd> / <kbd>Tab</kbd> / <kbd>↓</kbd> 移至下一張，按 <kbd>↑</kbd> 返回上一張。留空即為 0，每次輸入均即時儲存。', '批量輸入說明')}
         <label class="small"><input type="checkbox" id="sp-par"${parOf(sv.set) ? ' checked' : ''}> 包括異圖及 SP</label>
-        <select id="sp-rarity" aria-label="稀有度"><option value="">全部稀有度</option>${setFilterOptions().map(r => `<option${r === sv.rarity ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option>${isBooster(sv.set) ? `<option value="short4">R / SR / SEC 不足 ${PLAYSET} 張</option>` : ''}</select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>
@@ -1169,6 +1182,7 @@
         ${lastBulk && lastBulk.set === sv.set && lastBulk.inf ? `<button class="small" id="inf-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
         <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
+      ${rarityTicksHtml(setFilterOptions(), sv.rarities, 'data-rar')}
       ${sv.bulkOpen ? bulkBarHtml() : ''}
       ${isStarter(sv.set) ? boxBarHtml() : ''}
       ${isStarter(sv.set) && sv.boxEdit ? boxEditHtml() : ''}
@@ -1210,7 +1224,9 @@
       if (first && matchMedia('(pointer: fine)').matches) first.focus();
     }
     el.onclick = e => {
-      if (e.target.closest('[data-back]')) { sv.set = ''; sv.rarity = ''; return renderSets(); }
+      if (e.target.closest('[data-back]')) { sv.set = ''; sv.rarities = []; return renderSets(); }
+      const rt = e.target.closest('[data-rar]');
+      if (rt) { sv.rarities = toggleRarity(sv.rarities, rt.dataset.rar); return renderSets(); }
       const m = e.target.closest('[data-mode]');
       if (m) { sv.mode = m.dataset.mode; try { localStorage.setItem('opcg-setmode', sv.mode); } catch (err) { /* ignore */ } return renderSets(); }
       if (e.target.closest('#sp-bulk-toggle')) { sv.bulkOpen = !sv.bulkOpen; return renderSets(); }
@@ -1289,7 +1305,6 @@
       if (e.target.id === 'bk-rarity') { sv.bulkRarity = e.target.value; return renderSets(); }
       if (e.target.id === 'bk-mode') { sv.bulkMode = e.target.value; return; }
       if (e.target.id === 'bk-n') { sv.bulkN = e.target.value; return; }
-      if (e.target.id === 'sp-rarity') sv.rarity = e.target.value;
       if (e.target.id === 'sp-par') { if (isStarter(sv.set)) sv.parallelsST = e.target.checked; else sv.parallels = e.target.checked; }
       if (e.target.id === 'sp-show') sv.show = e.target.value;
       if (e.target.id === 'sp-sort') sv.sort = e.target.value;

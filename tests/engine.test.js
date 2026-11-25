@@ -441,4 +441,18 @@ t('app version file: 1.<PR number> and a date', () => {
   assert.ok(require('fs').readFileSync(require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8').includes('<script src="version.js"></script>'));
 });
 
+t('ticked rarities: any of several, versions by kind', () => {
+  const cards = [
+    { id: 'OP01-001', rarity: 'C' }, { id: 'OP01-002', rarity: 'UC' }, { id: 'OP01-003', rarity: 'R' },
+    { id: 'OP01-004', rarity: 'SR' }, { id: 'OP01-004_p1', rarity: 'SR' }, { id: 'OP01-005_p2', rarity: 'SP卡' },
+    { id: 'OP01-006', rarity: 'SEC' },
+  ];
+  const pick = p => cards.filter(c => E.rarityPick(c, p)).map(c => c.id);
+  assert.strictEqual(pick([]).length, 7, 'nothing ticked: all');
+  assert.deepStrictEqual(pick(['C', 'UC']), ['OP01-001', 'OP01-002']);
+  assert.deepStrictEqual(pick(['R', 'SR']), ['OP01-003', 'OP01-004', 'OP01-004_p1']);
+  assert.deepStrictEqual(pick(['SP']), ['OP01-005_p2'], 'SP卡 is SP');
+  assert.deepStrictEqual(pick(['異圖', 'SEC']), ['OP01-004_p1', 'OP01-006']);
+});
+
 console.log(`\n${passed} tests passed`);
