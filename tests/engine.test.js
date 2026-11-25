@@ -431,4 +431,14 @@ t('rarity filter groups: C＋UC and R＋SR', () => {
   assert.deepStrictEqual(E.undoBulk(res.owned, res.prev), { 'OP01-002': 3 });
 });
 
+t('app version file: 1.<PR number> and a date', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app', 'version.js'), 'utf8');
+  const sandbox = { window: {} };
+  new Function('window', src)(sandbox.window);
+  const v = sandbox.window.OPCG_VERSION;
+  assert.match(v.number, /^1\.\d+$/);
+  assert.match(v.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(require('fs').readFileSync(require('path').join(__dirname, '..', 'app', 'index.html'), 'utf8').includes('<script src="version.js"></script>'));
+});
+
 console.log(`\n${passed} tests passed`);
