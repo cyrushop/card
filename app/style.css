@@ -353,6 +353,9 @@ h2 .help-wrap, h3 .help-wrap, summary .help-wrap { margin-left: 4px; }
   background: var(--panel); border: 1px dashed var(--accent); border-radius: 10px; }
 .ph[hidden] { display: none; }
 
+/* home: app version, top right */
+.home-ver { text-align: right; font-size: 12px; color: var(--muted); margin: -6px 2px 6px; }
+
 /* home: new series release dates */
 .release-due { border-color: var(--accent); border-style: solid; }
 .rel-list { margin: 4px 0 6px; padding-left: 18px; }

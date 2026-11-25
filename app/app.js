@@ -10,6 +10,7 @@
   const CARDS = (window.OPCG_CARDS && window.OPCG_CARDS.cards) || [];
   const META = (window.OPCG_DECKS && window.OPCG_DECKS.decks) || [];
   const PRICES = window.OPCG_PRICES || { prices: {} };
+  const VERSION = window.OPCG_VERSION || {};
   // Release dates of new series, from the official product list (bot/scrape_products.py).
   const PRODUCTS = window.OPCG_PRODUCTS || { products: [] };
   const DEFAULT_RATE = 0.049; // JPY -> HKD (mid-Aug 2026); the price bot refreshes it
@@ -817,6 +818,7 @@
     const counts = st => state.decks.filter(d => d.status === st).length;
     el.innerHTML = `
       ${DEMO ? '<div class="demo-banner"><b>示範版</b>：卡圖、卡名、效果、價格及牌組均為示範資料（斯摩格 OP10-001 及 RG Luffy 卡表除外）。在此所作的修改只儲存於本機。正式版本請在電腦執行 <code>python3 serve.py</code>。</div>' : (CARDS.length ? '' : noDataNotice('卡表'))}
+      ${VERSION.number ? `<div class="home-ver" title="程式版本">版本 ${esc(VERSION.number)}${VERSION.date ? ` · ${esc(VERSION.date)}` : ''}</div>` : ''}
       <div class="hero-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
         <input type="search" id="h-q" placeholder="路飛 OP08, c5, p6000…" autocomplete="off" enterkeyhint="search">${help(SEARCH_HELP, '搜尋語法')}</div>
       <div id="h-results"></div>
