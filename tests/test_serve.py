@@ -64,6 +64,13 @@ class Files(ServerCase):
             self.assertEqual(self.req("GET", p)[0], 404, p)
         self.assertEqual(self.req("GET", "/")[0], 302)
 
+    def test_new_versions_show_on_reload(self):
+        # The program is checked with the server on every load; card pictures may be kept for a week.
+        for p in ("/app/", "/app/app.js", "/app/version.js"):
+            self.assertEqual(self.req("GET", p)[2].get("Cache-Control"), "no-cache", p)
+        self.assertIn("max-age", self.req("GET", "/data/images/OP01-001.png")[2].get("Cache-Control", ""))
+        self.assertEqual(self.req("GET", "/data/cards.js")[2].get("Cache-Control"), "no-store")
+
     def test_state_and_conflict(self):
         s, body, _ = self.req("PUT", "/api/state", {"owned": {"OP01-001": 2}})
         self.assertEqual(s, 200)
