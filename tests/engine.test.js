@@ -418,4 +418,17 @@ t('new series: upcoming, out but not in the card list yet, odd dates', () => {
   assert.deepStrictEqual(s.released, [], 'reminder ends once the card list has them');
 });
 
+t('rarity filter groups: C＋UC and R＋SR', () => {
+  const cards = ['C', 'UC', 'R', 'SR', 'SEC', 'L'].map((r, i) => ({ id: `OP01-00${i}`, rarity: r }));
+  const pick = ch => cards.filter(c => E.rarityIn(c, ch)).map(c => c.rarity);
+  assert.deepStrictEqual(pick('R＋SR'), ['R', 'SR']);
+  assert.deepStrictEqual(pick('C＋UC'), ['C', 'UC']);
+  assert.deepStrictEqual(pick('SEC'), ['SEC']);
+  assert.strictEqual(pick('').length, 6);
+  // "all shown cards to ∞" uses bulkSet: ∞ for each, undo puts the counts back
+  const res = E.bulkSet({ 'OP01-002': 3 }, ['OP01-002', 'OP01-003'], 'set', E.INF);
+  assert.ok(E.isInf(res.owned['OP01-002']) && E.isInf(res.owned['OP01-003']));
+  assert.deepStrictEqual(E.undoBulk(res.owned, res.prev), { 'OP01-002': 3 });
+});
+
 console.log(`\n${passed} tests passed`);

@@ -483,6 +483,7 @@
 
   // ======================================================== COLLECTION
   const cf = { q: '', set: '', color: '', cat: '', rarity: '', owned: '', sort: 'id', limit: 120 };
+  let cfUndo = null; // { prev, label } after 「符合篩選的卡全部 ∞」, for undo
   function collectionItems() {
     const ids = new Set(CARDS.map(c => c.id));
     for (const id of Object.keys(state.owned)) ids.add(id);
@@ -493,7 +494,7 @@
       if (cf.set && (c.set || E.setOf(c.id)) !== cf.set && !(c.series || []).some(s => s.code === cf.set)) return false;
       if (cf.color && !E.cardColors(c).includes(cf.color)) return false;
       if (cf.cat && c.category !== cf.cat) return false;
-      if (cf.rarity && c.rarity !== cf.rarity) return false;
+      if (cf.rarity && !E.rarityIn(c, cf.rarity)) return false;
       if (cf.owned === 'have' && !ownedOf(c.id)) return false;
       if (cf.owned === 'none' && ownedOf(c.id)) return false;
       if (cf.owned === 'spare' && !(ownedOf(c.id) > 4)) return false;
@@ -520,7 +521,7 @@
           <select id="cf-set"><option value="">全部系列</option>${SETS.map(s => opt(s, s)).join('')}</select>
           <select id="cf-color"><option value="">全部顏色</option>${COLORS.map(c => opt(c, c)).join('')}</select>
           <select id="cf-cat"><option value="">全部類別</option>${Object.entries(CATS).map(([k, v]) => opt(k, v)).join('')}</select>
-          <select id="cf-rarity"><option value="">全部稀有度</option>${RARITIES.map(r => opt(r, r)).join('')}</select>
+          <select id="cf-rarity"><option value="">全部稀有度</option>${rarityGroupsFor(RARITIES).concat(RARITIES).map(r => opt(r, r)).join('')}</select>
           <select id="cf-owned"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有</option><option value="spare">多於 4 張</option><option value="reserved">已預留給牌組</option></select>
           <select id="cf-sort"><option value="id">按編號</option><option value="owned">按數量</option><option value="cost">按費用</option><option value="price">按價格</option></select>
           </div>
@@ -535,6 +536,17 @@
         input.addEventListener(k === 'q' ? 'input' : 'change', () => { cf[k] = input.value; cf.limit = 120; drawGrid(); });
       }
       $('#cf-more').addEventListener('click', () => { cf.limit += 240; drawGrid(); });
+      $('#cf-stats').addEventListener('click', async e => {
+        if (e.target.closest('#cf-allinf')) {
+          if (!['q', 'set', 'color', 'cat', 'rarity', 'owned'].some(k => cf[k])) { toast('請先篩選（例如選系列或稀有度），以免把整個卡庫設為 ∞'); return; }
+          const r = await setAllInf(collectionItems().map(c => c.id), '符合篩選');
+          if (r) { cfUndo = { prev: r.prev, label: `${r.n} 款設為 ∞` }; drawGrid(); }
+        }
+        if (e.target.closest('#cf-undo') && cfUndo) {
+          state.owned = E.undoBulk(state.owned, cfUndo.prev);
+          toast('已撤銷：' + cfUndo.label); cfUndo = null; save(); drawGrid();
+        }
+      });
       $('#cf-ft').addEventListener('click', () => el.querySelector('.toolbar').classList.toggle('show-filters'));
       $('#cf-grid').addEventListener('click', onGridClick);
       $('#cf-grid').addEventListener('change', e => {
@@ -557,7 +569,9 @@
     const distinct = Object.keys(state.owned).length;
     $('#cf-stats').innerHTML = `<span>總共 <b>${totalCopies}</b> 張 · <b>${distinct}</b> 款</span>
       <span>符合篩選 <b>${list.length}</b> 款</span>
-      <span>預留給已組建牌組 <b>${Object.values(reserved).reduce((s, n) => s + n, 0)}</b> 張</span>`;
+      <span>預留給已組建牌組 <b>${Object.values(reserved).reduce((s, n) => s + n, 0)}</b> 張</span>
+      <button class="small" id="cf-allinf" title="把符合篩選的卡全部設為 ∞">符合篩選的卡全部 ∞</button>
+      ${cfUndo ? `<button class="small" id="cf-undo">撤銷：${esc(cfUndo.label)}</button>` : ''}`;
     const price = pricer();
     $('#cf-grid').innerHTML = list.slice(0, cf.limit).map(c => tileHtml(c, reserved, price)).join('');
     $('#cf-more').style.display = list.length > cf.limit ? '' : 'none';
@@ -929,7 +943,8 @@
   const isBooster = code => ['補充包', '特殊補充包', '高級補充包'].includes(E.setGroup(code));
   const shortMode = () => sv.show === 'short4' && isBooster(sv.set);
   function shortList() {
-    const rar = PLAYSET_RARITIES.includes(sv.rarity) ? [sv.rarity] : PLAYSET_RARITIES;
+    const chosen = (E.RARITY_GROUPS[sv.rarity] || [sv.rarity]).filter(r => PLAYSET_RARITIES.includes(r));
+    const rar = chosen.length ? chosen : PLAYSET_RARITIES;
     return E.shortOfPlayset(CARDS, state.owned, sv.set, rar, PLAYSET);
   }
   /** Copies of a card number, all versions together (as the playset check counts them). */
@@ -960,7 +975,7 @@
     let list = CARDS.filter(c => E.inSet(c, sv.set) && (parOf(sv.set) || pickVersion || c.id === E.baseId(c.id)));
     if (sv.rarity === 'SP') list = list.filter(c => c.rarity === 'SP');
     else if (pickVersion) list = list.filter(c => E.variantLabel(c) === sv.rarity);
-    else if (sv.rarity) list = list.filter(c => (c.rarity || '') === sv.rarity);
+    else if (sv.rarity) list = list.filter(c => E.rarityIn(c, sv.rarity));
     if (sv.show === 'have') list = list.filter(c => ownedOf(c.id));
     if (sv.show === 'none') list = list.filter(c => !ownedOf(c.id));
     const cmp = (a, b) => a.id.localeCompare(b.id, 'en', { numeric: true });
@@ -1002,7 +1017,27 @@
   function setFilterOptions() {
     const kinds = new Set(CARDS.filter(c => E.inSet(c, sv.set)).map(c => E.variantLabel(c)).filter(Boolean));
     const out = setRarities().concat(VERSION_KINDS.filter(k => kinds.has(k)));
-    return Array.from(new Set(out)).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+    const sorted = Array.from(new Set(out)).sort((a, b) => (RAR_ORDER.indexOf(a) + 1 || 99) - (RAR_ORDER.indexOf(b) + 1 || 99));
+    return rarityGroupsFor(setRarities()).concat(sorted);
+  }
+  /** C＋UC / R＋SR, offered when the cards have both rarities of the group. */
+  function rarityGroupsFor(rarities) {
+    return Object.entries(E.RARITY_GROUPS).filter(([, rs]) => rs.every(r => rarities.includes(r))).map(([k]) => k);
+  }
+  /**
+   * Set every card in `ids` to ∞ after asking; returns the counts it replaced (for undo), or null.
+   * `what` names the cards in the question, e.g. "目前顯示".
+   */
+  async function setAllInf(ids, what) {
+    const todo = ids.filter(id => !E.isInf(ownedOf(id)));
+    if (!todo.length) { toast('這些卡已全部是 ∞'); return null; }
+    const ok = await ask(`把${what}的 ${todo.length} 款卡全部設為 ∞（很多，不計數；計算總值時每款當 ${E.INF_COPIES} 張）？`, { ok: '全部設為 ∞' });
+    if (!ok) return null;
+    const res = E.bulkSet(state.owned, todo, 'set', E.INF);
+    state.owned = res.owned;
+    save();
+    toast(`已把 ${todo.length} 款設為 ∞；如有錯可按「撤銷」`);
+    return { prev: res.prev, n: todo.length };
   }
   function bulkIds(rarity) {
     return CARDS.filter(c => E.inSet(c, sv.set) && c.id === E.baseId(c.id) && (c.rarity || '') === rarity).map(c => c.id);
@@ -1128,6 +1163,8 @@
         <select id="sp-show"><option value="">全部</option><option value="have">已擁有</option><option value="none">未擁有（缺卡）</option>${isBooster(sv.set) ? `<option value="short4">R / SR / SEC 不足 ${PLAYSET} 張</option>` : ''}</select>
         <select id="sp-sort"><option value="id">按編號</option><option value="price">按價格</option></select>
         <button class="small" id="sp-copy">複製缺卡清單</button>
+        <button class="small" id="sp-allinf" title="把目前顯示的卡（按現時的篩選）全部設為 ∞">顯示中的卡全部 ∞</button>
+        ${lastBulk && lastBulk.set === sv.set && lastBulk.inf ? `<button class="small" id="inf-undo">撤銷：${esc(lastBulk.label)}</button>` : ''}
         <button class="small${sv.bulkOpen ? ' primary' : ''}" id="sp-bulk-toggle" aria-expanded="${sv.bulkOpen}">按稀有度批量設定</button>
       </div>
       ${sv.bulkOpen ? bulkBarHtml() : ''}
@@ -1189,7 +1226,14 @@
       if (e.target.closest('#bx-save')) return saveRecipe();
       if (e.target.closest('#bx-clear')) { $$('.bxq', el).forEach(i => { i.value = ''; }); return boxEditTotal(); }
       if (e.target.closest('#bx-read')) return readRecipeText();
-      if (e.target.closest('#bk-undo, #bx-undo') && lastBulk) {
+      if (e.target.closest('#sp-allinf')) {
+        (async () => {
+          const r = await setAllInf(setCards().map(c => c.id), '目前顯示');
+          if (r) { lastBulk = { set: sv.set, prev: r.prev, label: `${r.n} 款設為 ∞`, inf: true }; renderSets(); }
+        })();
+        return;
+      }
+      if (e.target.closest('#bk-undo, #bx-undo, #inf-undo') && lastBulk) {
         state.owned = E.undoBulk(state.owned, lastBulk.prev);
         toast('已撤銷：' + lastBulk.label);
         lastBulk = null; save(); return renderSets();
